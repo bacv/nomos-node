@@ -139,3 +139,11 @@ services:
       - /usr/local/bin/etcd
       - --advertise-client-urls=http://etcd:2379
       - --listen-client-urls=http://0.0.0.0:2379
+
+  ghost:
+    build:
+      context: .
+      dockerfile: testnet/Dockerfile
+    volumes:
+      - ./testnet:/etc/nomos
+    entrypoint: /etc/nomos/scripts/run_ghost.sh

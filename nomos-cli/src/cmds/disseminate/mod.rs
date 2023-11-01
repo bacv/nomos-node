@@ -2,14 +2,18 @@ use crate::da::disseminate::{
     DaProtocolChoice, DisseminateApp, DisseminateAppServiceSettings, Settings,
 };
 use clap::Args;
+use nomos_core::wire;
 use nomos_network::{backends::libp2p::Libp2p, NetworkService};
 use overwatch_rs::{overwatch::OverwatchRunner, services::ServiceData};
 use reqwest::Url;
+use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::Mutex;
 
 #[derive(Args, Debug)]
 pub struct Disseminate {
+    #[clap(short, long)]
+    pub user: String,
     // TODO: accept bytes
     #[clap(short, long)]
     pub data: String,
@@ -31,6 +35,12 @@ pub struct Disseminate {
     pub output: Option<PathBuf>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+struct ChatMessage {
+    author: String,
+    message: String,
+}
+
 impl Disseminate {
     pub fn run(&self) -> Result<(), Box<dyn std::error::Error>> {
         tracing::subscriber::set_global_default(tracing_subscriber::FmtSubscriber::new())
@@ -40,7 +50,12 @@ impl Disseminate {
             <NetworkService<Libp2p> as ServiceData>::Settings,
         >(std::fs::File::open(&self.network_config)?)?;
         let (status_updates, rx) = std::sync::mpsc::channel();
-        let bytes: Box<[u8]> = self.data.clone().as_bytes().into();
+        let bytes: Box<[u8]> = wire::serialize(&ChatMessage {
+            author: self.user.clone(),
+            message: self.data.clone(),
+        })
+        .unwrap()
+        .into();
         let timeout = Duration::from_secs(self.timeout);
         let da_protocol = self.da_protocol.clone();
         let node_addr = self.node_addr.clone();
