@@ -1,10 +1,10 @@
 backend:
   host: 0.0.0.0
-  port: 3019
+  port: 4019
   log_level: "fatal"
   node_key: "7777777777777777777777777777777777777777777777777777777777777777"
   discV5BootstrapNodes: []
-  initial_peers: ["/dns/voo.fm/tcp/3000"]
+  initial_peers: ["/dns/bootstrap/tcp/3000"]
   relayTopics: []
   # Mixclient configuration to communicate with mixnodes.
   # The libp2p network backend always requires this mixclient configuration
@@ -20,14 +20,14 @@ backend:
       # Each mixnet layer consists of a list of mixnodes.
       layers:
        - nodes:
-          - address: voo.fm:7707  # A listen address of the mixnode
+          - address: mix-node-0:7777  # A listen address of the mixnode
             public_key: "fd3384e132ad02a56c78f45547ee40038dc79002b90d29ed90e08eee762ae715"
        - nodes:
-          - address: voo.fm:7717  # A listen address of the mixnode
+          - address: mix-node-1:7777  # A listen address of the mixnode
             public_key: "fd3384e132ad02a56c78f45547ee40038dc79002b90d29ed90e08eee762ae715"
 
        - nodes:
-          - address: voo.fm:7727  # A listen address of the mixnode
+          - address: mix-node-2:7777  # A listen address of the mixnode
             public_key: "fd3384e132ad02a56c78f45547ee40038dc79002b90d29ed90e08eee762ae715"
 
     # A max number of connections that will stay connected to mixnodes in the first mixnet layer.

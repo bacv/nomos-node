@@ -1,0 +1,16 @@
+[Unit]
+Description=Nomos Static Testnet
+Requires=docker.service
+After=docker.service
+
+[Service]
+RemainAfterExit=yes
+WorkingDirectory=/opt/nomos-node
+ExecStartPre=-/usr/bin/docker compose -f compose.static.yml down
+ExecStart=/usr/bin/docker compose -f compose.static.yml up -d
+ExecStop=/usr/bin/docker compose -f compose.static.yml down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+

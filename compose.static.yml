@@ -146,4 +146,13 @@ services:
       dockerfile: testnet/Dockerfile
     volumes:
       - ./testnet:/etc/nomos
+    depends_on:
+      - bootstrap
+      - etcd
+      - mix-node-0
+      - mix-node-1
+      - mix-node-2
+      - libp2p-node-1
+      - libp2p-node-2
+      - libp2p-node-3
     entrypoint: /etc/nomos/scripts/run_ghost.sh
