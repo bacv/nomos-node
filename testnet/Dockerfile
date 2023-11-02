@@ -17,19 +17,14 @@ RUN cargo build --release --all
 
 # NODE IMAGE ----------------------------------------------------------
 
-FROM debian:bullseye-slim
+FROM bitnami/minideb:latest
 
 LABEL maintainer="augustinas@status.im" \
       source="https://github.com/logos-co/nomos-node" \
       description="Nomos testnet image"
 
 # nomos default ports
-EXPOSE 3000 8080 9000 60000 
-
-# Install dependencies
-RUN apt-get update && apt-get install -yq \
-    libssl-dev \
-    && rm -rf /var/lib/apt/lists/*
+EXPOSE 3000 8080 9000 60000
 
 COPY --from=builder /nomos/target/release/nomos-node /usr/bin/nomos-node
 COPY --from=builder /nomos/target/release/mixnode /usr/bin/mixnode

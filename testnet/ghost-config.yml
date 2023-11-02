@@ -4,7 +4,7 @@ backend:
   log_level: "fatal"
   node_key: "7777777777777777777777777777777777777777777777777777777777777777"
   discV5BootstrapNodes: []
-  initial_peers: ["/dns/bootstrap/tcp/3000"]
+  initial_peers: ["/dns/bootstrap/tcp/3000", "/dns/libp2p-node-1/tcp/3000", "/dns/libp2p-node-2/tcp/3000","/dns/libp2p-node-3/tcp/3000"]
   relayTopics: []
   # Mixclient configuration to communicate with mixnodes.
   # The libp2p network backend always requires this mixclient configuration
