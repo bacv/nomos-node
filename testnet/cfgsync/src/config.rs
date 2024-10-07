@@ -6,6 +6,7 @@ use nomos_log::LoggerBackend;
 use nomos_node::Config as NodeConfig;
 use tests::{ConsensusConfig, DaConfig, Node, NomosNode};
 // internal
+use crate::TracingConfig;
 
 const DEFAULT_NETWORK_PORT: u16 = 3000;
 const DEFAULT_DA_NETWORK_PORT: u16 = 3300;
@@ -37,6 +38,7 @@ impl Host {
 pub fn create_node_configs(
     consensus: ConsensusConfig,
     da: DaConfig,
+    tracing: TracingConfig,
     hosts: Vec<Host>,
 ) -> HashMap<Host, NodeConfig> {
     let mut configs = NomosNode::create_node_configs(consensus, da);
@@ -68,8 +70,10 @@ pub fn create_node_configs(
         ))
         .unwrap();
 
+        // Tracing config.
         config.log.backend = LoggerBackend::Otel {
-            endpoint: "tempo:4317".to_string(),
+            trace_endpoint: tracing.trace_endpoint.clone(),
+            log_endpoint: tracing.log_endpoint.clone(),
         };
 
         configured_hosts.insert(host.clone(), config.clone());

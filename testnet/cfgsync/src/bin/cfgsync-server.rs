@@ -8,6 +8,7 @@ use std::{fs, process};
 use axum::extract::State;
 use axum::Json;
 use axum::{http::StatusCode, response::IntoResponse, routing::post, Router};
+use cfgsync::TracingConfig;
 use cfgsync::config::Host;
 use cfgsync::repo::{ConfigRepo, RepoResponse};
 use clap::Parser;
@@ -40,6 +41,10 @@ struct CfgSyncConfig {
     old_blobs_check_interval_secs: u64,
     blobs_validity_duration_secs: u64,
     global_params_path: String,
+
+    // Tracing params
+    trace_endpoint: String,
+    log_endpoint: String,
 }
 
 impl CfgSyncConfig {
@@ -67,6 +72,13 @@ impl CfgSyncConfig {
             old_blobs_check_interval: Duration::from_secs(self.old_blobs_check_interval_secs),
             blobs_validity_duration: Duration::from_secs(self.blobs_validity_duration_secs),
             global_params_path: self.global_params_path.clone(),
+        }
+    }
+    
+    fn to_tracing_config(&self) -> TracingConfig {
+        TracingConfig {
+            trace_endpoint: self.trace_endpoint.to_owned(),
+            log_endpoint: self.log_endpoint.to_owned(),
         }
     }
 }
@@ -106,11 +118,13 @@ async fn main() {
     });
     let consensus_config = config.to_consensus_config();
     let da_config = config.to_da_config();
+    let tracing_config = config.to_tracing_config();
 
     let config_repo = ConfigRepo::new(
         config.n_hosts,
         consensus_config,
         da_config,
+        tracing_config,
         Duration::from_secs(config.timeout),
     );
     let app = Router::new()

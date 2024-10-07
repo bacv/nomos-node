@@ -9,6 +9,7 @@ use tests::{ConsensusConfig, DaConfig};
 use tokio::sync::oneshot::Sender;
 use tokio::time::timeout;
 // internal
+use crate::TracingConfig;
 
 use crate::config::{create_node_configs, Host};
 
@@ -23,6 +24,7 @@ pub struct ConfigRepo {
     n_hosts: usize,
     consensus_config: ConsensusConfig,
     da_config: DaConfig,
+    tracing_config: TracingConfig,
     timeout_duration: Duration,
 }
 
@@ -31,6 +33,7 @@ impl ConfigRepo {
         n_hosts: usize,
         consensus_config: ConsensusConfig,
         da_config: DaConfig,
+        tracing_config: TracingConfig,
         timeout_duration: Duration,
     ) -> Arc<Self> {
         let repo = Arc::new(Self {
@@ -38,6 +41,7 @@ impl ConfigRepo {
             n_hosts,
             consensus_config,
             da_config,
+            tracing_config,
             timeout_duration,
         });
 
@@ -71,6 +75,7 @@ impl ConfigRepo {
                 let configs = create_node_configs(
                     self.consensus_config.clone(),
                     self.da_config.clone(),
+                    self.tracing_config.clone(),
                     hosts,
                 );
 
