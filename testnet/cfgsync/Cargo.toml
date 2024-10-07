@@ -7,6 +7,7 @@ edition = "2021"
 axum = { version = "0.6" }
 clap = { version = "4", features = ["derive"] }
 nomos-libp2p = { path = "../../nomos-libp2p" }
+nomos-log = { path = "../../nomos-services/log" }
 nomos-node = { path = "../../nodes/nomos-node" }
 reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
 tests = { path = "../../tests" }

@@ -2,6 +2,7 @@
 use std::{collections::HashMap, net::Ipv4Addr, str::FromStr};
 // crates
 use nomos_libp2p::{Multiaddr, PeerId};
+use nomos_log::LoggerBackend;
 use nomos_node::Config as NodeConfig;
 use tests::{ConsensusConfig, DaConfig, Node, NomosNode};
 // internal
@@ -66,6 +67,10 @@ pub fn create_node_configs(
             host.da_network_port,
         ))
         .unwrap();
+
+        config.log.backend = LoggerBackend::Otel {
+            endpoint: "tempo:4317".to_string(),
+        };
 
         configured_hosts.insert(host.clone(), config.clone());
     }
