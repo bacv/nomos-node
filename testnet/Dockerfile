@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -yq \
     pkg-config protobuf-compiler
 
 RUN cargo install cargo-binstall --version 1.10.19
-RUN cargo binstall -y cargo-risczero
+RUN cargo binstall -y cargo-risczero@1.2.0
 RUN cargo risczero install
 
 RUN cargo build --release
