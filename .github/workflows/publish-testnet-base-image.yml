@@ -10,7 +10,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: nomos-base
+  IMAGE_NAME: bacv/nomos-base
 
 jobs:
   push_to_registries:
