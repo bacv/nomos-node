@@ -1,4 +1,4 @@
-name: Publish Testnet Docker Image
+name: Publish Testnet Nomos Image
 
 on:
   workflow_dispatch:
@@ -51,7 +51,7 @@ jobs:
         uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671
         with:
           context: .
-          file: ./testnet/Dockerfile
+          file: ./testnet/Dockerfile.nomos
           platforms: linux/amd64
           push: true
           tags: |
