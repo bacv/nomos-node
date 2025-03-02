@@ -1,4 +1,4 @@
-name: Publish Testnet Docker Image
+name: Publish Testnet Nomos Image
 
 on:
   workflow_dispatch:

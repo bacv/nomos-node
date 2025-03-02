@@ -4,7 +4,7 @@ FROM ghcr.io/bacv/nomos-base:latest
 
 LABEL maintainer="augustinas@status.im" \
       source="https://github.com/logos-co/nomos-node" \
-      description="Nomos testnet build image"
+      description="Nomos testnet image"
 
 WORKDIR /nomos
 COPY . .

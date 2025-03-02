@@ -1,4 +1,4 @@
-name: Publish Testnet Docker Image
+name: Publish Testnet Base Image
 
 on:
   workflow_dispatch:
