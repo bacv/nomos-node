@@ -1,0 +1,16 @@
+# BASE IMAGE ---------------------------------------------------------
+
+FROM rust:1.84.0-slim-bookworm AS base
+
+LABEL maintainer="augustinas@status.im" \
+      source="https://github.com/logos-co/nomos-node" \
+      description="Base image with Rust and RISC Zero preinstalled"
+
+# Install dependencies needed for building RocksDB and etcd.
+RUN apt-get update && apt-get install -yq \
+    git gcc g++ clang libssl-dev pkg-config ca-certificates
+
+# Install cargo-binstall and risc0
+RUN cargo install cargo-binstall
+RUN cargo binstall cargo-risczero@1.2.0 --no-confirm
+RUN cargo risczero install
