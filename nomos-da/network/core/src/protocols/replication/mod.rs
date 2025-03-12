@@ -1,4 +1,5 @@
 pub mod behaviour;
+pub mod behaviour_v2;
 
 #[cfg(test)]
 mod test {

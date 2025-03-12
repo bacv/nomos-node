@@ -50,7 +50,7 @@ async fn disseminate_and_retrieve() {
 
 #[tokio::test]
 async fn disseminate_retrieve_reconstruct() {
-    const ITERATIONS: usize = 5;
+    const ITERATIONS: usize = 10;
 
     let topology = Topology::spawn(TopologyConfig::validators_and_executor(3, 2)).await;
     let executor = &topology.executors()[0];

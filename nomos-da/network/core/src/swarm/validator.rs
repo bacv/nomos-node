@@ -22,8 +22,8 @@ use crate::{
     behaviour::validator::{ValidatorBehaviour, ValidatorBehaviourEvent},
     maintenance::monitor::PeerCommand,
     protocols::{
-        dispersal::validator::behaviour::DispersalEvent, replication::behaviour::ReplicationEvent,
-        sampling::behaviour::SamplingEvent,
+        dispersal::validator::behaviour::DispersalEvent,
+        replication::behaviour_v2::ReplicationEvent, sampling::behaviour::SamplingEvent,
     },
     swarm::{
         common::{

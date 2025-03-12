@@ -19,7 +19,7 @@ use crate::{
                 DispersalEvent as DispersalValidatorEvent,
             },
         },
-        replication::behaviour::{ReplicationError, ReplicationEvent},
+        replication::behaviour_v2::{ReplicationError, ReplicationEvent},
         sampling::behaviour::{SamplingError, SamplingEvent},
     },
 };

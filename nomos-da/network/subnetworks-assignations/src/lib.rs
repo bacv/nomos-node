@@ -31,6 +31,13 @@ pub trait MembershipHandler {
     fn last_subnetwork_id(&self) -> Self::NetworkId;
 
     fn get_address(&self, peer_id: &PeerId) -> Option<Multiaddr>;
+
+    fn is_neighbour(&self, lhs: &Self::Id, rhs: &Self::Id) -> bool {
+        self.membership(lhs)
+            .intersection(&self.membership(rhs))
+            .count()
+            > 0
+    }
 }
 
 use std::sync::Arc;
@@ -64,5 +71,9 @@ where
 
     fn get_address(&self, peer_id: &PeerId) -> Option<Multiaddr> {
         self.as_ref().get_address(peer_id)
+    }
+
+    fn is_neighbour(&self, lhs: &Self::Id, rhs: &Self::Id) -> bool {
+        self.as_ref().is_neighbour(lhs, rhs)
     }
 }

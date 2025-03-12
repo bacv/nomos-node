@@ -17,4 +17,9 @@ impl ReplicationRequest {
             subnetwork_id,
         }
     }
+
+    #[must_use]
+    pub fn id(&self) -> (Vec<u8>, u16) {
+        (self.blob.blob_id.to_vec(), self.subnetwork_id)
+    }
 }
