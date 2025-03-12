@@ -13,7 +13,7 @@ use crate::{
             executor::behaviour::DispersalExecutorBehaviour,
             validator::behaviour::DispersalValidatorBehaviour,
         },
-        replication::behaviour::ReplicationBehaviour,
+        replication::behaviour_v2::ReplicationBehaviour,
         sampling::behaviour::SamplingBehaviour,
     },
 };

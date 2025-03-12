@@ -9,7 +9,7 @@ use crate::{
     maintenance::monitor::{ConnectionMonitor, ConnectionMonitorBehaviour},
     protocols::{
         dispersal::validator::behaviour::DispersalEvent,
-        replication::behaviour::{ReplicationBehaviour, ReplicationEvent},
+        replication::behaviour_v2::{ReplicationBehaviour, ReplicationEvent},
         sampling::behaviour::SamplingEvent,
     },
     SubnetworkId,
@@ -20,7 +20,7 @@ pub async fn handle_validator_dispersal_event<Membership>(
     replication_behaviour: &mut ReplicationBehaviour<Membership>,
     event: DispersalEvent,
 ) where
-    Membership: MembershipHandler<NetworkId = SubnetworkId, Id = PeerId>,
+    Membership: MembershipHandler<NetworkId = SubnetworkId, Id = PeerId> + 'static,
 {
     // Send message for replication
     if let DispersalEvent::IncomingMessage { message } = event {
@@ -28,7 +28,7 @@ pub async fn handle_validator_dispersal_event<Membership>(
         if let Err(e) = validation_events_sender.send(blob_message.data.clone()) {
             error!("Error sending blob to validation: {e:?}");
         }
-        replication_behaviour.send_message(&replication::ReplicationRequest::new(
+        replication_behaviour.send_message(replication::ReplicationRequest::new(
             blob_message,
             message.subnetwork_id,
         ));

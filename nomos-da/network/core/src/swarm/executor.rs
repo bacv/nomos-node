@@ -24,7 +24,7 @@ use crate::{
         dispersal::{
             executor::behaviour::DispersalExecutorEvent, validator::behaviour::DispersalEvent,
         },
-        replication::behaviour::ReplicationEvent,
+        replication::behaviour_v2::ReplicationEvent,
         sampling::behaviour::SamplingEvent,
     },
     swarm::{
