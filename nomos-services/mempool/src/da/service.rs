@@ -21,9 +21,10 @@ use services_utils::overwatch::{
     lifecycle, recovery::operators::RecoveryBackend as RecoveryBackendTrait, JsonFileBackend,
     RecoveryOperator,
 };
+use tokio::sync::oneshot;
 
 use crate::{
-    backend::{MemPool, RecoverableMempool},
+    backend::{MemPool, MempoolError, RecoverableMempool},
     da::{settings::DaMempoolSettings, state::DaMempoolState},
     network::NetworkAdapter as NetworkAdapterTrait,
     MempoolMetrics, MempoolMsg,
@@ -359,31 +360,7 @@ where
                 key,
                 reply_channel,
             } => {
-                match self.pool.add_item(key, item.clone()) {
-                    Ok(_id) => {
-                        // Broadcast the item to the network
-                        let settings = self
-                            .service_state_handle
-                            .settings_reader
-                            .get_updated_settings()
-                            .network_adapter;
-                        self.service_state_handle
-                            .state_updater
-                            .update(self.pool.save().into());
-                        // move sending to a new task so local operations can complete in the
-                        // meantime
-                        tokio::spawn(async {
-                            let adapter = NetworkAdapter::new(settings, network_relay).await;
-                            adapter.send(item).await;
-                        });
-                        if let Err(e) = reply_channel.send(Ok(())) {
-                            tracing::debug!("Failed to send reply to AddTx: {:?}", e);
-                        }
-                    }
-                    Err(e) => {
-                        tracing::debug!("could not add tx to the pool due to: {}", e);
-                    }
-                }
+                self.handle_add_message(item, key, reply_channel, network_relay);
             }
             MempoolMsg::View {
                 ancestor_hint,
@@ -424,6 +401,45 @@ where
                 reply_channel
                     .send(self.pool.status(&items))
                     .unwrap_or_else(|_| tracing::debug!("could not send back mempool status"));
+            }
+        }
+    }
+
+    fn handle_add_message(
+        &mut self,
+        item: NetworkAdapter::Payload,
+        key: Pool::Key,
+        reply_channel: oneshot::Sender<Result<(), MempoolError>>,
+        network_relay: OutboundRelay<NetworkMsg<NetworkAdapter::Backend>>,
+    ) {
+        match self.pool.add_item(key, item.clone()) {
+            Ok(_id) => {
+                // Broadcast the item to the network
+                let settings = self
+                    .service_state_handle
+                    .settings_reader
+                    .get_updated_settings()
+                    .network_adapter;
+                self.service_state_handle
+                    .state_updater
+                    .update(self.pool.save().into());
+
+                // move sending to a new task so local operations can complete in the
+                // meantime
+                tokio::spawn(async {
+                    let adapter = NetworkAdapter::new(settings, network_relay).await;
+                    adapter.send(item).await;
+                });
+
+                if let Err(e) = reply_channel.send(Ok(())) {
+                    tracing::debug!("Failed to send reply to AddTx: {e:?}");
+                }
+            }
+            Err(e) => {
+                tracing::debug!("could not add tx to the pool due to: {e}");
+                if let Err(e) = reply_channel.send(Err(e)) {
+                    tracing::debug!("Failed to send reply to AddTx: {e:?}");
+                }
             }
         }
     }
