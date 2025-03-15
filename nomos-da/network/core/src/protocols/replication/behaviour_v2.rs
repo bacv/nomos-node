@@ -195,7 +195,6 @@ where
         if self.seen_message_cache.contains(&message.id()) {
             return;
         }
-        self.seen_message_cache.insert(message.id());
         if let Err(e) = self.pending_blobs_sender.send(message) {
             error!("Error writing to replication sender: {e}");
         }
@@ -248,9 +247,12 @@ where
         connected_peers: &HashSet<PeerId>,
         idle_write_streams: &mut HashMap<PeerId, WriteStream>,
         to_replicate: &mut HashMap<PeerId, VecDeque<ReplicationRequest>>,
+        seen_message_cache: &mut IndexSet<(Vec<u8>, SubnetworkId)>,
         local_peer_id: &PeerId,
         membership: &Membership,
     ) {
+        seen_message_cache.insert(message.id());
+
         let mut members = membership.members_of(&message.subnetwork_id);
         members.remove(local_peer_id);
         let peers = members
@@ -360,6 +362,7 @@ impl<M: MembershipHandler<Id = PeerId, NetworkId = SubnetworkId> + 'static> Netw
             incoming_streams,
             read_tasks,
             write_tasks,
+            pending_blobs_sender,
             pending_out_streams,
             pending_blobs_stream,
             seen_message_cache,
@@ -397,6 +400,7 @@ impl<M: MembershipHandler<Id = PeerId, NetworkId = SubnetworkId> + 'static> Netw
                 connected_peers,
                 idle_write_streams,
                 to_replicate,
+                seen_message_cache,
                 local_peer_id,
                 membership,
             );
@@ -434,10 +438,11 @@ impl<M: MembershipHandler<Id = PeerId, NetworkId = SubnetworkId> + 'static> Netw
                 Ok((peer_id, message, stream)) => {
                     // Stream is ready to receive new messages.
                     read_tasks.push(Self::read_message(peer_id, stream).boxed());
-
                     // If this is a unseen message - propagate.
                     if !seen_message_cache.contains(&message.id()) {
-                        seen_message_cache.insert(message.id());
+                        if let Err(err) = pending_blobs_sender.send(message.clone()) {
+                            error!("Failed to write to pending_blob_sender: {err}");
+                        }
                         return Poll::Ready(ToSwarm::GenerateEvent(
                             ReplicationEvent::IncomingMessage {
                                 message: Box::new(message),

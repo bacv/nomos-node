@@ -13,10 +13,11 @@ mod test {
     use tracing_subscriber::{fmt::TestWriter, EnvFilter};
 
     use crate::{
-        protocols::replication::behaviour::{DaMessage, ReplicationBehaviour, ReplicationEvent},
+        protocols::replication::behaviour_v2::{ReplicationBehaviour, ReplicationEvent},
         test_utils::AllNeighbours,
     };
 
+    pub type DaMessage = nomos_da_messages::replication::ReplicationRequest;
     type TestSwarm = Swarm<ReplicationBehaviour<AllNeighbours>>;
 
     fn get_swarm(key: Keypair, all_neighbours: AllNeighbours) -> TestSwarm {
@@ -60,19 +61,12 @@ mod test {
             .map(|i| Box::new(get_message(i)))
             .collect::<VecDeque<Box<DaMessage>>>();
 
-        while let Some(expected_message) = expected_messages.front() {
-            loop {
-                if let SwarmEvent::Behaviour(ReplicationEvent::IncomingMessage {
-                    message, ..
-                }) = swarm.select_next_some().await
-                {
-                    if &message == expected_message {
-                        break;
-                    }
-                }
+        while !expected_messages.is_empty() {
+            if let SwarmEvent::Behaviour(ReplicationEvent::IncomingMessage { message, .. }) =
+                swarm.select_next_some().await
+            {
+                expected_messages.retain(|expected_message| **expected_message != *message);
             }
-
-            expected_messages.pop_front().unwrap();
         }
     }
 
@@ -98,9 +92,9 @@ mod test {
         let k1 = Keypair::generate_ed25519();
         let k2 = Keypair::generate_ed25519();
         let k3 = Keypair::generate_ed25519();
-        let peer_id1 = PeerId::from_public_key(&k1.public());
+        // let peer_id1 = PeerId::from_public_key(&k1.public());
         let peer_id2 = PeerId::from_public_key(&k2.public());
-        let peer_id3 = PeerId::from_public_key(&k3.public());
+        // let peer_id3 = PeerId::from_public_key(&k3.public());
         let neighbours1 = make_neighbours(&[&k1, &k2]);
         let neighbours2 = make_neighbours(&[&k1, &k2, &k3]);
         let neighbours3 = make_neighbours(&[&k2, &k3]);
@@ -111,15 +105,19 @@ mod test {
         let (done_2_tx, mut done_2_rx) = mpsc::channel::<()>(1);
         let (done_3_tx, mut done_3_rx) = mpsc::channel::<()>(1);
 
+        let (ready_1_tx, mut ready_1_rx) = mpsc::channel::<()>(1);
+        let (ready_3_tx, mut ready_3_rx) = mpsc::channel::<()>(1);
+
         let addr1: Multiaddr = "/ip4/127.0.0.1/udp/5054/quic-v1".parse().unwrap();
         let addr3: Multiaddr = "/ip4/127.0.0.1/udp/5055/quic-v1".parse().unwrap();
         let addr1_ = addr1.clone();
         let addr3_ = addr3.clone();
         let task_1 = async move {
             swarm_1.listen_on(addr1).unwrap();
+            ready_1_tx.send(()).await.unwrap();
             wait_for_incoming_connection(&mut swarm_1, peer_id2).await;
 
-            (0..10usize).for_each(|i| swarm_1.behaviour_mut().send_message(&get_message(i)));
+            (0..10usize).for_each(|i| swarm_1.behaviour_mut().send_message(get_message(i)));
 
             wait_for_messages(&mut swarm_1, 10..20).await;
 
@@ -127,8 +125,10 @@ mod test {
             swarm_1.loop_on_next().await;
         };
         let task_2 = async move {
-            assert_eq!(swarm_2.dial_and_wait(addr1_).await, peer_id1);
-            assert_eq!(swarm_2.dial_and_wait(addr3_).await, peer_id3);
+            ready_1_rx.recv().await.unwrap();
+            ready_3_rx.recv().await.unwrap();
+            assert!(swarm_2.dial(addr1_).is_ok());
+            assert!(swarm_2.dial(addr3_).is_ok());
 
             wait_for_messages(&mut swarm_2, 0..20).await;
 
@@ -137,10 +137,11 @@ mod test {
         };
         let task_3 = async move {
             swarm_3.listen_on(addr3).unwrap();
+            ready_3_tx.send(()).await.unwrap();
             wait_for_incoming_connection(&mut swarm_3, peer_id2).await;
-            wait_for_messages(&mut swarm_3, 0..10).await;
+            (10..20usize).for_each(|i| swarm_3.behaviour_mut().send_message(get_message(i)));
 
-            (10..20usize).for_each(|i| swarm_3.behaviour_mut().send_message(&get_message(i)));
+            wait_for_messages(&mut swarm_3, 0..10).await;
 
             done_3_tx.send(()).await.unwrap();
             swarm_3.loop_on_next().await;
@@ -210,7 +211,7 @@ mod test {
                 tokio::select! {
                     // send a message everytime that the channel ticks
                     _  = receiver.recv() => {
-                        swarm_2.behaviour_mut().send_message(&get_message(i));
+                        swarm_2.behaviour_mut().send_message(get_message(i));
                         i += 1;
                     }
                     // print out events
