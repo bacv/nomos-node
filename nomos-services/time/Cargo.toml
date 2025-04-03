@@ -21,6 +21,9 @@ time               = "0.3"
 tokio              = { version = "1", features = ["macros", "sync"] }
 tokio-stream       = "0.1"
 
+[dev-dependencies]
+stun = "0.7"
+
 [features]
 ntp       = ["dep:sntpc", "dep:thiserror"]
 serde     = ["dep:cfg_eval", "dep:nomos-utils", "dep:serde", "dep:serde_with"]

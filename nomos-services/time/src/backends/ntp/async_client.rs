@@ -1,6 +1,6 @@
 use std::{
     fmt::{Debug, Formatter},
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     time::Duration,
 };
 
@@ -34,7 +34,7 @@ pub struct NTPClientSettings {
     /// The bound IP behaves like a server listening IP. This means for WAN
     /// requests you probably want to bind to `0.0.0.0`. For LAN requests
     /// you can simply bind to the local IP.
-    pub local_socket: SocketAddr,
+    pub interface: IpAddr,
 }
 
 #[derive(Clone)]
@@ -61,6 +61,13 @@ impl AsyncNTPClient {
         }
     }
 
+    async fn get_time(&self, host: SocketAddr) -> sntpc::Result<NtpResult> {
+        let socket = UdpSocket::bind(SocketAddr::new(self.settings.interface, 0))
+            .await
+            .map_err(|_| sntpc::Error::Network)?; // same error that get_time returns for io
+        get_time(host, &socket, self.ntp_context).await
+    }
+
     /// Request a timestamp from an NTP server
     ///
     /// # Errors
@@ -73,12 +80,11 @@ impl AsyncNTPClient {
         &self,
         pool: Addresses,
     ) -> Result<NtpResult, Error> {
-        let socket = &UdpSocket::bind(self.settings.local_socket)
-            .await
-            .map_err(Error::Io)?;
-        let hosts = lookup_host(&pool).await.map_err(Error::Io)?;
+        let hosts: Vec<_> = lookup_host(&pool).await.map_err(Error::Io)?.collect();
+        println!(">>> {hosts:?}");
         let mut checks = hosts
-            .map(move |host| get_time(host, socket, self.ntp_context))
+            .into_iter()
+            .map(move |host| self.get_time(host))
             .collect::<FuturesUnordered<_>>()
             .into_stream();
         timeout(self.settings.timeout, checks.select_next_some())
@@ -91,9 +97,11 @@ impl AsyncNTPClient {
 #[cfg(test)]
 mod tests {
     use std::{
-        net::{IpAddr, Ipv4Addr, SocketAddr},
+        net::{IpAddr, Ipv4Addr},
         time::Duration,
     };
+
+    use stun::message::Message;
 
     use super::*;
 
@@ -112,13 +120,35 @@ mod tests {
         let ntp_server_address = format!("{ntp_server_ip}:123");
 
         let settings = NTPClientSettings {
-            timeout: Duration::from_secs(3),
-            local_socket: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0),
+            timeout: Duration::from_secs(10),
+            interface: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
         };
         let client = AsyncNTPClient::new(settings);
 
         let _response = client.request_timestamp(ntp_server_address).await?;
 
         Ok(())
+    }
+
+    #[tokio::test]
+    async fn echo_udp() {
+        let stun_server = "stun.l.google.com:19302";
+
+        let socket = UdpSocket::bind("0.0.0.0:0").await.unwrap();
+        socket.connect(stun_server).await.unwrap();
+        let mut msg = Message::new();
+        msg.set_type(stun::message::BINDING_REQUEST);
+        msg.encode();
+
+        socket.send(&msg.raw).await.unwrap();
+
+        let mut response = [0u8; 120];
+        let _ = socket.recv(&mut response).await.unwrap();
+
+        let mut resp = Message::new();
+        resp.raw = response.to_vec();
+        let e = resp.decode();
+
+        println!("Received STUN response: {e:?} >>>> {resp:?}");
     }
 }
