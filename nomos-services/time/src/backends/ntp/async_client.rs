@@ -103,7 +103,6 @@ mod tests {
     // receiving the response. Responses only come through when querying
     // `time.windows.com`, which runs NTP v3. The library we're using,
     // [`sntpc`], requires NTP v4.
-    #[cfg(not(target_os = "macos"))]
     #[tokio::test]
     async fn real_ntp_request() -> Result<(), Error> {
         // 0.europe.pool.ntp.org
@@ -114,7 +113,7 @@ mod tests {
 
         let settings = NTPClientSettings {
             timeout: Duration::from_secs(3),
-            local_socket: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 12345),
+            local_socket: SocketAddr::new(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)), 0),
         };
         let client = AsyncNTPClient::new(settings);
 
