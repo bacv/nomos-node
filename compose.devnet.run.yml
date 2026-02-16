@@ -173,8 +173,8 @@ services:
       - tempo-init
 
   # L2 Sequencer Demo Services
-  l2-nginx:
-    container_name: l2_nginx
+  nginx:
+    container_name: nginx
     image: ghcr.io/logos-blockchain/logos-blockchain:devnet
     ports:
       - "18080:18080"
@@ -182,8 +182,8 @@ services:
       - cfgsync
       - explorer
     volumes:
-      - ./testnet/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./testnet/static:/usr/share/nginx/html:ro
+      - ./testnet/nginx/nginx.run.conf:/etc/nginx/nginx.conf:ro
+      - ./testnet/nginx/static:/usr/share/nginx/html:ro
     entrypoint: [ "nginx", "-g", "daemon off;" ]
 
   l2-sequencer:
