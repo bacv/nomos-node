@@ -4802,6 +4802,7 @@ dependencies = [
  "axum 0.7.9",
  "clap",
  "hex",
+ "logos-blockchain-cfgsync",
  "logos-blockchain-common-http-client 0.1.0",
  "logos-blockchain-groth16 0.1.0",
  "logos-blockchain-http-api-common 0.1.0",
