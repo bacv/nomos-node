@@ -1,6 +1,6 @@
 #!/bin/sh
 
-rm -rf /node-data/cfgsync
+rm -rf /node-data/*
 
 set -e
 
