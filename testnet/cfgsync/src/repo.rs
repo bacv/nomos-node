@@ -131,7 +131,12 @@ impl ConfigRepo {
             println!("All hosts have announced their IPs");
 
             let mut waiting_hosts = self.waiting_hosts.lock().unwrap();
-            let hosts = waiting_hosts.keys().cloned().collect();
+            let hosts: Vec<Host> = waiting_hosts.keys().cloned().collect();
+            println!(
+                "DEBUG: Generating configs for {} unique hosts: {:?}",
+                hosts.len(),
+                hosts
+            );
 
             let (configs, genesis_tx) =
                 create_node_configs(&self.faucet_settings, &self.tracing_settings, hosts);

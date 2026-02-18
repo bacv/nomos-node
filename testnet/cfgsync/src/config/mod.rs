@@ -54,6 +54,8 @@ pub fn create_node_configs(
         ids.push(host_to_id(&host.identifier));
     }
 
+    println!(">>> ids {ids:?}");
+
     // Clippy in 1.93.0:
     // > an unstable sort typically performs faster without any
     // > observable difference for this data type. [stable_sort_primitive]

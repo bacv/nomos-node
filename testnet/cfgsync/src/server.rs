@@ -59,6 +59,7 @@ async fn init_node(
     Json(info): Json<RegistrationInfo>,
 ) -> impl IntoResponse {
     let (reply_tx, reply_rx) = channel();
+    println!(">> registering {info:?}");
     config_repo.register(Host::from(info), reply_tx);
 
     (reply_rx.await).map_or_else(
@@ -67,6 +68,7 @@ async fn init_node(
             RepoResponse::Config(response) => {
                 let (config, deployment_settings) = *response;
                 let config = create_validator_config(config, deployment_settings);
+                println!(">>>>>> Config: {config:?}");
                 (StatusCode::OK, Json(config)).into_response()
             }
             RepoResponse::Timeout => (StatusCode::REQUEST_TIMEOUT).into_response(),
