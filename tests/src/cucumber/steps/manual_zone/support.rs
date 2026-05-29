@@ -52,7 +52,7 @@ use lb_zone_sdk::{
     indexer::ZoneIndexer,
     sequencer::{
         Event, InscriptionId, OrphanedTx, PublishResult, SequencerChannelView, SequencerCheckpoint,
-        SequencerConfig, SequencerHandle, WithdrawArg, ZoneSequencer,
+        SequencerConfig, SequencerHandle, TurnNotification, WithdrawArg, ZoneSequencer,
     },
     state::{FinalizedOp, InscriptionInfo, PublishedTx},
 };
@@ -541,7 +541,7 @@ async fn publish_planned_balance_updates(
     balances: &mut BalanceAwareState,
     planned: &mut VecDeque<Inscription>,
 ) {
-    if !view_rx.borrow().is_our_turn {
+    if !view_rx.borrow().our_turn_to_write {
         return;
     }
 
@@ -787,6 +787,33 @@ pub async fn wait_for_channel_view(
     .map_err(|_| ZoneTestError::ChannelViewTimeout {
         message: format!(
             "condition not reached within {} seconds",
+            duration.as_secs()
+        ),
+    })?
+}
+
+pub async fn wait_for_turn_to_write(
+    turn_rx: &mut tokio::sync::watch::Receiver<TurnNotification>,
+    duration: Duration,
+) -> Result<(), ZoneTestError> {
+    timeout(duration, async {
+        loop {
+            if turn_rx.borrow_and_update().our_turn_to_write {
+                return Ok(());
+            }
+
+            turn_rx
+                .changed()
+                .await
+                .map_err(|error| ZoneTestError::ChannelViewTimeout {
+                    message: format!("turn-to-write sender closed: {error}"),
+                })?;
+        }
+    })
+    .await
+    .map_err(|_| ZoneTestError::ChannelViewTimeout {
+        message: format!(
+            "turn-to-write notification not received within {} seconds",
             duration.as_secs()
         ),
     })?
