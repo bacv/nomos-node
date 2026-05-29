@@ -694,13 +694,12 @@ async fn wait_for_published_event(
 ) -> Result<PublishResult, ZoneTestError> {
     timeout(deadline.remaining()?, async {
         while let Some(event) = sequencer_events.recv().await {
-            if let Event::Published { tx, checkpoint } = event
+            if let Event::Published { tx } = event
                 && let Some(info) = tx.inscription()
                 && info.payload.as_slice() == data
             {
                 return Ok(PublishResult {
                     inscription_id: tx.tx_hash(),
-                    checkpoint,
                 });
             }
         }
@@ -735,10 +734,9 @@ pub async fn wait_for_published_payloads(
             let Some(event) = sequencer_events.recv().await else {
                 return Err(ZoneTestError::PublishTimeout);
             };
-            let Event::Published { tx, checkpoint } = event else {
+            let Event::Published { tx } = event else {
                 continue;
             };
-
             let Some(info) = tx.inscription() else {
                 continue;
             };
@@ -751,7 +749,6 @@ pub async fn wait_for_published_payloads(
 
             results[index] = Some(PublishResult {
                 inscription_id: tx.tx_hash(),
-                checkpoint,
             });
             remaining -= 1;
         }
@@ -1476,7 +1473,7 @@ pub async fn publish_atomic_zone_withdraw(
 
     timeout(deadline.remaining()?, async {
         while let Some(event) = sequencer_events.recv().await {
-            let Event::Published { tx, checkpoint } = event else {
+            let Event::Published { tx } = event else {
                 continue;
             };
             let Some(info) = tx.inscription() else {
@@ -1502,7 +1499,6 @@ pub async fn publish_atomic_zone_withdraw(
                 withdraws,
                 publish: PublishResult {
                     inscription_id: info.tx_hash,
-                    checkpoint,
                 },
             });
         }
