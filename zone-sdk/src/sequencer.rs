@@ -2419,7 +2419,7 @@ fn extract_inscriptions(txs: &[SignedMantleTx], channel_id: ChannelId) -> Vec<In
                     tx_hash,
                     parent_msg,
                     this_msg: config.id(),
-                    payload: Inscription::empty(),
+                    payload: [].into(),
                 };
                 last_in_block = Some(info.this_msg);
                 items.push(info);
@@ -2562,7 +2562,6 @@ fn sign_tx(tx_hash: TxHash, signing_key: &Ed25519Key) -> Ed25519Signature {
 
 #[cfg(test)]
 mod tests {
-
     use async_trait::async_trait;
     use lb_common_http_client::{
         ApiBlock, ApiHeader, BlockInfo, ChainServiceMode, CryptarchiaInfo, State,
@@ -2571,6 +2570,7 @@ mod tests {
         header::ContentId,
         mantle::{
             Note, Utxo,
+            ledger::Inputs,
             ops::channel::deposit::{DepositOp, Metadata},
         },
         proofs::leader_proof::Groth16LeaderProof,
@@ -2616,7 +2616,7 @@ mod tests {
         let (sk, utxo) = utxo_with_sk();
         let deposit_op = DepositOp {
             channel_id,
-            inputs: [utxo.id()].into(),
+            inputs: Inputs::new([utxo.id()]),
             metadata: b"to Alice".into(),
         };
 
@@ -2680,7 +2680,7 @@ mod tests {
         use lb_groth16::Fr;
         DepositOp {
             channel_id,
-            inputs: [NoteId::from(Fr::from(input_seed))].into(),
+            inputs: Inputs::new([NoteId::from(Fr::from(input_seed))]),
             metadata,
         }
     }
@@ -2826,7 +2826,7 @@ mod tests {
         // finalized view, not a "what we tracked locally" view.
         let channel_id = ChannelId::from([0; 32]);
         let other_channel = ChannelId::from([9; 32]);
-        let outputs = Outputs::new(vec![Note::new(
+        let outputs = Outputs::new([Note::new(
             42,
             ZkKey::from(BigUint::from(0u64)).to_public_key(),
         )]);
@@ -2901,7 +2901,7 @@ mod tests {
         // withdraws field populated, so on orphan we emit
         // OrphanedTx::AtomicWithdraw (not Inscription).
         let channel_id = ChannelId::from([1u8; 32]);
-        let outputs = Outputs::new(vec![Note::new(
+        let outputs = Outputs::new([Note::new(
             5,
             ZkKey::from(BigUint::from(0u64)).to_public_key(),
         )]);
