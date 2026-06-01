@@ -1,4 +1,4 @@
-use std::{num::NonZero, time::Duration};
+use std::{num::NonZero, path::PathBuf, time::Duration};
 
 use futures::StreamExt as _;
 use lb_core::{
@@ -22,9 +22,12 @@ use lb_testing_framework::{
     configs::wallet::{WalletAccount, WalletConfig},
 };
 use lb_utils::math::NonNegativeRatio;
-use logos_blockchain_tests::common::manual_cluster::{
-    ManualNodeLayout, api_url, get_wallet_balance, start_local_manual_cluster_with_layout,
-    wait_for_nodes_height,
+use logos_blockchain_tests::{
+    common::manual_cluster::{
+        ManualNodeLayout, api_url, get_wallet_balance, start_local_manual_cluster_with_layout,
+        wait_for_nodes_height,
+    },
+    cucumber::defaults::E2E_ARTIFACTS_DIR,
 };
 use serial_test::serial;
 use testing_framework_core::scenario::DynError;
@@ -57,6 +60,7 @@ async fn channel_deposit() {
         2,
         ManualNodeLayout::SelectNodeSeed(0),
         |config| Ok::<_, DynError>(channel_test_config(config)),
+        Some(PathBuf::from(E2E_ARTIFACTS_DIR)),
     )
     .await;
 
@@ -78,9 +82,10 @@ async fn channel_deposit() {
     // Also, record the channel balance before deposit
     // We use the channel created by the genesis inscription for simplicity.
     let channel_id = base
-        .deployment
+        .deployment()
         .config
         .genesis_block
+        .as_ref()
         .expect("manual-cluster deployment should include genesis tx")
         .genesis_tx()
         .genesis_inscription()
