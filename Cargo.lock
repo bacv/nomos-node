@@ -989,7 +989,7 @@ checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
 [[package]]
 name = "cfgsync-adapter"
 version = "0.1.0"
-source = "git+https://github.com/logos-blockchain/logos-blockchain-testing.git?tag=dev_snapshot_2026_04_23_4854942d#4854942dcedd226f6adbe9970afc4661dfdb1e6d"
+source = "git+https://github.com/logos-blockchain/logos-blockchain-testing.git?tag=dev_snapshot_2026_06_03_4733e56a#4733e56af27e2e8c94b3779151bcaa647ac85432"
 dependencies = [
  "cfgsync-artifacts",
  "cfgsync-core",
@@ -1000,7 +1000,7 @@ dependencies = [
 [[package]]
 name = "cfgsync-artifacts"
 version = "0.1.0"
-source = "git+https://github.com/logos-blockchain/logos-blockchain-testing.git?tag=dev_snapshot_2026_04_23_4854942d#4854942dcedd226f6adbe9970afc4661dfdb1e6d"
+source = "git+https://github.com/logos-blockchain/logos-blockchain-testing.git?tag=dev_snapshot_2026_06_03_4733e56a#4733e56af27e2e8c94b3779151bcaa647ac85432"
 dependencies = [
  "serde",
  "thiserror 2.0.18",
@@ -1009,7 +1009,7 @@ dependencies = [
 [[package]]
 name = "cfgsync-core"
 version = "0.1.0"
-source = "git+https://github.com/logos-blockchain/logos-blockchain-testing.git?tag=dev_snapshot_2026_04_23_4854942d#4854942dcedd226f6adbe9970afc4661dfdb1e6d"
+source = "git+https://github.com/logos-blockchain/logos-blockchain-testing.git?tag=dev_snapshot_2026_06_03_4733e56a#4733e56af27e2e8c94b3779151bcaa647ac85432"
 dependencies = [
  "anyhow",
  "axum",
@@ -6819,7 +6819,7 @@ dependencies = [
  "protobuf-support",
  "tempfile",
  "thiserror 1.0.69",
- "which 4.4.2",
+ "which",
 ]
 
 [[package]]
@@ -8338,7 +8338,7 @@ dependencies = [
 [[package]]
 name = "testing-framework-core"
 version = "0.1.0"
-source = "git+https://github.com/logos-blockchain/logos-blockchain-testing.git?tag=dev_snapshot_2026_04_23_4854942d#4854942dcedd226f6adbe9970afc4661dfdb1e6d"
+source = "git+https://github.com/logos-blockchain/logos-blockchain-testing.git?tag=dev_snapshot_2026_06_03_4733e56a#4733e56af27e2e8c94b3779151bcaa647ac85432"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8360,7 +8360,7 @@ dependencies = [
 [[package]]
 name = "testing-framework-runner-compose"
 version = "0.1.0"
-source = "git+https://github.com/logos-blockchain/logos-blockchain-testing.git?tag=dev_snapshot_2026_04_23_4854942d#4854942dcedd226f6adbe9970afc4661dfdb1e6d"
+source = "git+https://github.com/logos-blockchain/logos-blockchain-testing.git?tag=dev_snapshot_2026_06_03_4733e56a#4733e56af27e2e8c94b3779151bcaa647ac85432"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8381,7 +8381,7 @@ dependencies = [
 [[package]]
 name = "testing-framework-runner-k8s"
 version = "0.1.0"
-source = "git+https://github.com/logos-blockchain/logos-blockchain-testing.git?tag=dev_snapshot_2026_04_23_4854942d#4854942dcedd226f6adbe9970afc4661dfdb1e6d"
+source = "git+https://github.com/logos-blockchain/logos-blockchain-testing.git?tag=dev_snapshot_2026_06_03_4733e56a#4733e56af27e2e8c94b3779151bcaa647ac85432"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -8406,19 +8406,20 @@ dependencies = [
 [[package]]
 name = "testing-framework-runner-local"
 version = "0.1.0"
-source = "git+https://github.com/logos-blockchain/logos-blockchain-testing.git?tag=dev_snapshot_2026_04_23_4854942d#4854942dcedd226f6adbe9970afc4661dfdb1e6d"
+source = "git+https://github.com/logos-blockchain/logos-blockchain-testing.git?tag=dev_snapshot_2026_06_03_4733e56a#4733e56af27e2e8c94b3779151bcaa647ac85432"
 dependencies = [
  "async-trait",
  "fs_extra",
+ "reqwest",
  "serde",
  "serde_yaml",
+ "sha2",
  "tempfile",
  "testing-framework-core",
  "thiserror 2.0.18",
  "tokio",
  "tokio-retry",
  "tracing",
- "which 6.0.3",
 ]
 
 [[package]]
@@ -9529,18 +9530,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "which"
-version = "6.0.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b4ee928febd44d98f2f459a4a79bd4d928591333a494a10a868418ac1b39cf1f"
-dependencies = [
- "either",
- "home",
- "rustix 0.38.44",
- "winsafe",
-]
-
-[[package]]
 name = "widestring"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9966,12 +9955,6 @@ checksum = "2ee1708bef14716a11bae175f579062d4554d95be2c6829f518df847b7b3fdd0"
 dependencies = [
  "memchr",
 ]
-
-[[package]]
-name = "winsafe"
-version = "0.0.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d135d17ab770252ad95e9a872d365cf3090e3be864a34ab46f48555993efc904"
 
 [[package]]
 name = "wit-bindgen"
