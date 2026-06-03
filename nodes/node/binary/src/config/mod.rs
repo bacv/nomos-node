@@ -14,7 +14,7 @@ use lb_core::sdp::ProviderId;
 use lb_groth16::fr_from_bytes;
 use lb_key_management_system_service::{
     backend::preload::KeyId,
-    keys::{Key, ZkPublicKey},
+    keys::{Key, UnsecuredZkKey, ZkPublicKey},
 };
 use lb_libp2p::{Multiaddr, ed25519::SecretKey};
 use lb_log_targets::node;
@@ -22,6 +22,7 @@ use lb_tracing::{
     filter::envfilter::{default_envfilter_config, parse_filter_directives},
     logging::local::{AppenderType, CompressionType, RetentionType, RollingConfig, RotationType},
 };
+use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
 
 pub use crate::config::{
@@ -178,7 +179,7 @@ impl From<LogFileAppenderType> for OsStr {
     }
 }
 
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Debug, Default, Clone)]
 pub struct LogArgs {
     /// Address for the Gelf backend
     #[clap(
@@ -227,7 +228,7 @@ pub struct LogArgs {
     pub max_files: Option<usize>,
 }
 
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Debug, Default, Clone)]
 pub struct NetworkArgs {
     #[clap(long = "net-host", env = "NET_HOST")]
     pub host: Option<IpAddr>,
@@ -236,8 +237,8 @@ pub struct NetworkArgs {
     pub port: Option<u16>,
 
     // TODO: Use either the raw bytes or the key type directly to delegate error handling to clap
-    #[clap(long = "net-node-key", env = "NET_NODE_KEY")]
-    pub node_key: Option<String>,
+    #[clap(long = "net-node-key", env = "NET_NODE_KEY", value_parser = parse_hex_ed25519_key)]
+    pub node_key: Option<SecretKey>,
 
     /// External address for nodes with a known public IP (disables NAT
     /// traversal). Format: /ip4/<public-ip>/udp/<port>/quic-v1
@@ -254,7 +255,7 @@ pub struct NetworkArgs {
     pub initial_peers: Option<Vec<Multiaddr>>,
 }
 
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Debug, Default, Clone)]
 pub struct BlendArgs {
     #[clap(long = "blend-addr", env = "BLEND_ADDR")]
     pub blend_addr: Option<Multiaddr>,
@@ -266,7 +267,7 @@ pub struct BlendArgs {
     pub blend_secret_key_id: Option<KeyId>,
 }
 
-#[derive(Parser, Debug, Clone, Copy)]
+#[derive(Parser, Debug, Default, Clone, Copy)]
 pub struct CryptarchiaArgs {
     #[clap(
         long = "cryptarchia-funding-pk",
@@ -280,7 +281,7 @@ pub struct CryptarchiaArgs {
     pub disable_ibd_peers: bool,
 }
 
-#[derive(Parser, Debug, Clone, Copy)]
+#[derive(Parser, Debug, Default, Clone, Copy)]
 pub struct SdpArgs {
     #[clap(
         long = "sdp-funding-pk",
@@ -290,7 +291,7 @@ pub struct SdpArgs {
     pub sdp_funding_pk: Option<ZkPublicKey>,
 }
 
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Debug, Default, Clone)]
 pub struct ApiArgs {
     #[clap(long = "http-host", env = "HTTP_HOST")]
     pub addr: Option<SocketAddr>,
@@ -299,7 +300,7 @@ pub struct ApiArgs {
     pub cors_origins: Option<Vec<String>>,
 }
 
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Debug, Default, Clone)]
 pub struct StateArgs {
     #[clap(long = "state-path", env = "STATE_PATH")]
     pub path: Option<PathBuf>,
@@ -514,8 +515,7 @@ pub fn update_network(network: &mut NetworkConfig, network_args: NetworkArgs) ->
     }
 
     if let Some(node_key) = node_key {
-        let mut key_bytes = hex::decode(node_key)?;
-        network.backend.swarm.node_key = SecretKey::try_from_bytes(key_bytes.as_mut_slice())?;
+        network.backend.swarm.node_key = node_key;
     }
 
     if let Some(external_address) = external_address {
@@ -719,4 +719,19 @@ pub fn parse_hex_public_key(key: &str) -> Result<ZkPublicKey, String> {
         fr_from_bytes(&bytes).map_err(|e| format!("Failed to deserialize Fr from bytes: {e}"))?;
 
     Ok(ZkPublicKey::new(fr))
+}
+
+pub fn parse_hex_zk_key(s: &str) -> Result<UnsecuredZkKey, String> {
+    let bytes = hex::decode(s).map_err(|e| format!("Invalid hex string for ZK key: {e}"))?;
+
+    let big_uint = BigUint::from_bytes_le(&bytes);
+
+    Ok(UnsecuredZkKey::from(big_uint))
+}
+
+pub fn parse_hex_ed25519_key(key: &str) -> Result<SecretKey, String> {
+    let mut key_bytes = hex::decode(key).map_err(|e| format!("Failed to parse hex string: {e}"))?;
+
+    SecretKey::try_from_bytes(key_bytes.as_mut_slice())
+        .map_err(|e| format!("Failed to deserialize ed25519 key from bytes: {e}"))
 }
