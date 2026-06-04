@@ -51,10 +51,10 @@ use lb_zone_sdk::{
     adapter::NodeHttpClient as ZoneNodeHttpClient,
     indexer::ZoneIndexer,
     sequencer::{
-        Event, InscriptionId, OrphanedTx, PublishResult, SequencerChannelView, SequencerCheckpoint,
-        SequencerConfig, SequencerHandle, TurnNotification, WithdrawArg, ZoneSequencer,
+        Event, FinalizedOp, InscriptionId, InscriptionInfo, OrphanedTx, PublishResult, PublishedTx,
+        SequencerChannelView, SequencerCheckpoint, SequencerConfig, SequencerHandle,
+        TurnNotification, WithdrawArg, ZoneSequencer,
     },
-    state::{FinalizedOp, InscriptionInfo, PublishedTx},
 };
 use rand::{Rng as _, thread_rng};
 use reqwest::Url;
@@ -305,24 +305,20 @@ pub fn start_sequencer_event_loop(
     tokio::sync::watch::Receiver<Option<SequencerCheckpoint>>,
 ) {
     let (tx, rx) = tokio::sync::mpsc::channel(256);
-    let (checkpoint_tx, checkpoint_rx) = tokio::sync::watch::channel(sequencer.checkpoint());
+    let checkpoint_rx = sequencer.subscribe_checkpoint();
 
-    let handle = tokio::spawn(async move {
-        loop {
-            let event = sequencer.next_event().await;
-            drop(checkpoint_tx.send(sequencer.checkpoint()));
-
-            if let Some(event) = event {
-                if let (true, Event::ChannelUpdate { orphaned, .. }) = (republish_orphans, &event) {
-                    republish_orphaned_inscriptions(&handle, orphaned).await;
-                }
-
-                drop(tx.send(event).await);
+    let task = tokio::spawn(async move {
+        let mut events = sequencer.events();
+        while let Some(event) = events.next().await {
+            if let (true, Event::ChannelUpdate { orphaned, .. }) = (republish_orphans, &event) {
+                republish_orphaned_inscriptions(&handle, orphaned).await;
             }
+
+            drop(tx.send(event).await);
         }
     });
 
-    (handle, rx, checkpoint_rx)
+    (task, rx, checkpoint_rx)
 }
 
 /// Drives a competing-sequencer policy that re-publishes invalidated payloads
@@ -332,8 +328,9 @@ pub fn start_republish_policy(
     handle: SequencerHandle<ZoneNodeHttpClient>,
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
-        loop {
-            if let Some(Event::ChannelUpdate { orphaned, .. }) = sequencer.next_event().await {
+        let mut events = sequencer.events();
+        while let Some(event) = events.next().await {
+            if let Event::ChannelUpdate { orphaned, .. } = event {
                 republish_orphaned_inscriptions(&handle, &orphaned).await;
             }
         }
@@ -364,19 +361,18 @@ pub fn start_balance_aware_policy(
     initial_balances: ZoneAccountBalances,
     planned_payloads: Vec<Inscription>,
 ) -> JoinHandle<()> {
+    let view_rx = sequencer.subscribe_channel_view();
     tokio::spawn(async move {
         let mut balances = BalanceAwareState::new(initial_balances);
         let mut planned = VecDeque::from(planned_payloads);
-        let view_rx = handle.subscribe_channel_view();
+        let mut events = sequencer.events();
 
-        loop {
-            match sequencer.next_event().await {
-                Some(Event::Published { tx, .. }) => {
-                    if let Some(info) = tx.inscription() {
-                        balances.record_applied_payload(&info.payload);
-                    }
+        while let Some(event) = events.next().await {
+            match event {
+                Event::Published { tx, .. } => {
+                    balances.record_applied_payload(&tx.inscription().payload);
                 }
-                Some(Event::ChannelUpdate { orphaned, adopted }) => {
+                Event::ChannelUpdate { orphaned, adopted } => {
                     let orphaned_inscriptions: Vec<InscriptionInfo> = orphaned
                         .into_iter()
                         .filter_map(|o| match o {
@@ -410,17 +406,16 @@ pub fn start_sorted_conflict_policy(
 ) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut sorted_state = SortedConflictState::new(discarded);
+        let mut events = sequencer.events();
 
-        loop {
-            match sequencer.next_event().await {
-                Some(Event::Published { tx, .. }) => {
-                    if let Some(info) = tx.inscription() {
-                        sorted_state
-                            .record_published_payload(info.payload.clone())
-                            .await;
-                    }
+        while let Some(event) = events.next().await {
+            match event {
+                Event::Published { tx, .. } => {
+                    sorted_state
+                        .record_published_payload(tx.inscription().payload.clone())
+                        .await;
                 }
-                Some(Event::ChannelUpdate { orphaned, adopted }) => {
+                Event::ChannelUpdate { orphaned, adopted } => {
                     sorted_state.record_adoptions(&adopted).await;
 
                     for entry in orphaned {
@@ -695,8 +690,7 @@ async fn wait_for_published_event(
     timeout(deadline.remaining()?, async {
         while let Some(event) = sequencer_events.recv().await {
             if let Event::Published { tx } = event
-                && let Some(info) = tx.inscription()
-                && info.payload.as_slice() == data
+                && tx.inscription().payload.as_slice() == data
             {
                 return Ok(PublishResult {
                     inscription_id: tx.tx_hash(),
@@ -737,10 +731,7 @@ pub async fn wait_for_published_payloads(
             let Event::Published { tx } = event else {
                 continue;
             };
-            let Some(info) = tx.inscription() else {
-                continue;
-            };
-            let payload = info.payload.as_slice();
+            let payload = tx.inscription().payload.as_slice();
             let Some(index) = data.iter().enumerate().find_map(|(index, expected)| {
                 (results[index].is_none() && payload == expected.as_slice()).then_some(index)
             }) else {
@@ -1476,10 +1467,7 @@ pub async fn publish_atomic_zone_withdraw(
             let Event::Published { tx } = event else {
                 continue;
             };
-            let Some(info) = tx.inscription() else {
-                continue;
-            };
-            if info.payload != inscription_data {
+            if tx.inscription().payload != inscription_data {
                 continue;
             }
             let PublishedTx::AtomicWithdraw(info) = *tx else {
