@@ -770,6 +770,8 @@ where
     }
 }
 
+/// Select transactions for a block, truncating the stream at the first
+/// transaction that trips the block size or count limits.
 async fn txs_for_block<Tx, S>(mut txs: S) -> Vec<Tx>
 where
     Tx: StorageSize,
@@ -785,11 +787,11 @@ where
 
         let tx_size = tx.storage_size();
         let Some(next_block_size) = block_size.checked_add(tx_size) else {
-            continue;
+            break;
         };
 
         if next_block_size > MAX_BLOCK_SIZE {
-            continue;
+            break;
         }
 
         block_size = next_block_size;
@@ -843,7 +845,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn block_tx_selection_skips_oversized_transactions() {
+    async fn block_tx_selection_stops_at_first_transaction_that_does_not_fit() {
+        // The middle transaction does not fit alongside the first, so selection
+        // must stop there and must not pull the third (which would fit on its
+        // own) ahead of it — doing so could drop a dependency of the third.
+        let txs = stream::iter(vec![
+            TestTx { size: 10 },
+            TestTx {
+                size: MAX_BLOCK_SIZE,
+            },
+            TestTx { size: 10 },
+        ]);
+
+        let selected = txs_for_block(txs).await;
+
+        assert_eq!(selected.len(), 1);
+        assert_eq!(selected[0].storage_size(), 10);
+    }
+
+    #[tokio::test]
+    async fn block_tx_selection_stops_at_leading_oversized_transaction() {
+        // A transaction larger than the whole block can never fit. Selection
+        // stops at it rather than skipping past to later transactions, which may
+        // depend on it. (In practice such transactions are filtered out before
+        // reaching here, but the prefix invariant must hold regardless.)
         let txs = stream::iter(vec![
             TestTx {
                 size: MAX_BLOCK_SIZE + 1,
@@ -853,7 +878,6 @@ mod tests {
 
         let selected = txs_for_block(txs).await;
 
-        assert_eq!(selected.len(), 1);
-        assert_eq!(selected[0].storage_size(), 1);
+        assert!(selected.is_empty());
     }
 }
