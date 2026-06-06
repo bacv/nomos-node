@@ -12,6 +12,7 @@ use lb_core::{
     sdp::{DeclarationId, DeclarationMessage},
 };
 use lb_groth16::fr_to_bytes;
+pub use lb_http_api_common::TimeInfo;
 use lb_http_api_common::{
     MAX_BLOCKS_STREAM_BLOCKS, MAX_BLOCKS_STREAM_CHUNK_SIZE,
     bodies::{
@@ -24,7 +25,7 @@ use lb_http_api_common::{
     paths::{
         BLEND_JOIN_NETWORK, BLOCK_EVENTS, BLOCKS, BLOCKS_DETAIL, BLOCKS_RANGE_STREAM,
         BLOCKS_STREAM, CHANNEL, CRYPTARCHIA_INFO, CRYPTARCHIA_LIB_STREAM, MEMPOOL_ADD_TX,
-        SDP_POST_DECLARATION,
+        SDP_POST_DECLARATION, TIME_INFO,
         wallet::{BALANCE, TRANSACTIONS_TRANSFER_FUNDS},
     },
     queries::BlocksStreamQuery,
@@ -295,6 +296,14 @@ impl CommonHttpClient {
             .join(CRYPTARCHIA_INFO.trim_start_matches('/'))
             .map_err(Error::Url)?;
         self.get::<(), ChainServiceInfo>(request_url, None).await
+    }
+
+    /// Get time service info derived from deployment settings.
+    pub async fn time_info(&self, base_url: Url) -> Result<TimeInfo, Error> {
+        let request_url = base_url
+            .join(TIME_INFO.trim_start_matches('/'))
+            .map_err(Error::Url)?;
+        self.get::<(), TimeInfo>(request_url, None).await
     }
 
     /// Get channel state for a specific channel id.

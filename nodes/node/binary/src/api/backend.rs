@@ -46,8 +46,8 @@ use utoipa_swagger_ui::SwaggerUi;
 use super::handlers::{
     add_tx, blend_info, block, block_events, blocks_range_stream, blocks_stream,
     cryptarchia_headers, cryptarchia_info, cryptarchia_lib_stream, dial_peer, get_sdp_declarations,
-    immutable_blocks, libp2p_info, mantle_metrics, mantle_status, mempool_view, transaction,
-    wallet,
+    immutable_blocks, libp2p_info, mantle_metrics, mantle_status, mempool_view, time_info,
+    transaction, wallet,
 };
 use crate::{
     BlendBroadcastSettings, BlendService, TracingService, WalletService,
@@ -130,6 +130,7 @@ where
         + Clone
         + 'static
         + AsServiceId<Cryptarchia<RuntimeServiceId>>
+        + AsServiceId<crate::TimeService>
         + AsServiceId<BlockBroadcastService<RuntimeServiceId>>
         + AsServiceId<
             lb_network_service::NetworkService<
@@ -212,6 +213,10 @@ where
             .route(
                 paths::CRYPTARCHIA_INFO,
                 routing::get(cryptarchia_info::<RuntimeServiceId>),
+            )
+            .route(
+                paths::TIME_INFO,
+                routing::get(time_info::<RuntimeServiceId>),
             )
             .route(
                 paths::CRYPTARCHIA_HEADERS,
