@@ -894,7 +894,7 @@ impl<ObservationWindowClockProvider> Behaviour<ObservationWindowClockProvider> {
                 ),
             &mut self.events,
             &mut self.message_cache,
-            self.waker.take(),
+            &mut self.waker,
         )
     }
 
@@ -926,7 +926,7 @@ impl<ObservationWindowClockProvider> Behaviour<ObservationWindowClockProvider> {
             &mut self.message_cache,
             from_peer_id,
             &mut self.events,
-            self.waker.take(),
+            &mut self.waker,
             self.current_epoch_info.1,
         ) {
             tracing::debug!(target: LOG_TARGET, "Failed to handle message from the current epoch: {receive_error:?}");
@@ -1169,8 +1169,8 @@ where
                 ToBehaviour::HealthyPeer => {
                     self.handle_healthy_connection((peer_id, connection_id));
                 }
-                _ => {
-                    tracing::trace!(target: LOG_TARGET, "Unhandled connection handler event: {event:?} from peer {peer_id:?} on connection {connection_id:?}");
+                ToBehaviour::IOError(e) => {
+                    tracing::trace!(target: LOG_TARGET, "IO error {e:?} with peer {peer_id:?} on connection {connection_id:?}");
                 }
             },
         }
