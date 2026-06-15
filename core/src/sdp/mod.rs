@@ -189,8 +189,17 @@ pub struct Declaration {
     pub locked_note_id: NoteId,
     pub locators: Locators,
     pub zk_id: ZkPublicKey,
+    /// The epoch of the block that contained the declaration
     pub created: Epoch,
+    /// The latest epoch for which the active message was sent.
+    ///
+    /// This is used only for checking if the declaration should
+    /// be marked as inactive, not for checking if it becomes active.
+    /// Idle->Active transition must be handled by the `EpochState`
+    /// snapshot logic.
+    // TODO: Use Option<Epoch> with a better name.
     pub active: Epoch,
+    /// The epoch at which the declaration must be withdrawn
     pub withdrawn: Option<Epoch>,
     pub nonce: Nonce,
 }
@@ -228,6 +237,14 @@ impl Declarations {
         &self,
     ) -> impl Iterator<Item = (&ServiceType, &HashMap<DeclarationId, Declaration>)> {
         self.0.iter()
+    }
+
+    #[must_use]
+    pub fn for_service(
+        &self,
+        service_type: &ServiceType,
+    ) -> Option<&HashMap<DeclarationId, Declaration>> {
+        self.0.get(service_type)
     }
 }
 
