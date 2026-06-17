@@ -1,3 +1,11 @@
+#![cfg_attr(
+    feature = "testing-disable-proposal-publish",
+    allow(
+        dead_code,
+        reason = "with proposal publishing disabled for testing, some functions and struct fields are unused"
+    )
+)]
+
 use std::marker::PhantomData;
 
 use lb_blend_service::message::{NetworkMessage, ProxyServiceMessage, ServiceMessage};
