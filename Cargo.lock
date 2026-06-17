@@ -4025,6 +4025,7 @@ dependencies = [
  "logos-blockchain-blend-proofs",
  "logos-blockchain-blend-scheduling",
  "logos-blockchain-cryptarchia-engine",
+ "logos-blockchain-groth16",
  "logos-blockchain-key-management-system-keys",
  "logos-blockchain-libp2p",
  "logos-blockchain-log-targets",
@@ -4210,6 +4211,7 @@ dependencies = [
  "serde",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-stream",
  "tracing",
  "tracing-futures",
 ]
