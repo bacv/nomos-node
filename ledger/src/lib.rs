@@ -623,6 +623,7 @@ impl LedgerState {
                         .execute(WithdrawExecutionContext {
                             channels: channels.clone(),
                             utxos: utxos.clone(),
+                            tx_hash,
                         })
                         .map_err(mantle::Error::Channel)?;
                     self.mantle_ledger = self.mantle_ledger.update_channels(result.channels);
@@ -1237,7 +1238,28 @@ mod tests {
             .expect("withdraw should have at least one utxo")
             .id();
         assert!(new_state.latest_utxos().contains(&withdraw_utxo));
-        assert!(events.is_empty());
+        assert_eq!(events.len(), 1);
+        let Event::Tx {
+            tx_hash,
+            op_id,
+            payload,
+        } = events.iter().next().unwrap().clone()
+        else {
+            panic!("expected a Tx event")
+        };
+        assert_eq!(tx_hash, withdraw_tx_hash);
+        assert_eq!(op_id, withdraw.op_id());
+        let EventPayload::Withdraw {
+            channel_id,
+            amount,
+            utxos,
+        } = payload
+        else {
+            panic!("expected Withdraw event")
+        };
+        assert_eq!(channel_id, withdraw.channel_id);
+        assert_eq!(amount, withdraw_note.value);
+        assert_eq!(utxos, withdraw.outputs.utxos(&withdraw).collect::<Vec<_>>());
     }
 
     #[test]
