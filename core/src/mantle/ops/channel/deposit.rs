@@ -1,6 +1,5 @@
 use lb_key_management_system_keys::keys::{ZkPublicKey, ZkSignature};
 use lb_utils::bounded_vec::UpperBoundedVec;
-use nom::IResult;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -9,7 +8,7 @@ use crate::{
         TxHash,
         channel::{Channels, Error},
         ledger::{Inputs, Operation, Utxos},
-        nom::{NomDecode, NomEncode},
+        nom::{NomCodec, NomEncode as _},
         ops::{OpId, channel::ChannelId},
     },
     sdp::locked_notes::LockedNotes,
@@ -18,7 +17,7 @@ use crate::{
 pub const MAX_METADATA_SIZE: usize = u32::MAX as usize;
 pub type Metadata = UpperBoundedVec<u8, { MAX_METADATA_SIZE }>;
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize, NomCodec)]
 pub struct DepositOp {
     pub channel_id: ChannelId,
     pub inputs: Inputs,
@@ -28,32 +27,6 @@ pub struct DepositOp {
 impl OpId for DepositOp {
     fn op_bytes(&self) -> Vec<u8> {
         self.encode()
-    }
-}
-
-impl NomEncode for DepositOp {
-    fn encode(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        bytes.extend(self.channel_id.encode());
-        bytes.extend(self.inputs.encode());
-        bytes.extend(self.metadata.encode());
-        bytes
-    }
-}
-
-impl NomDecode for DepositOp {
-    fn decode(bytes: &[u8]) -> IResult<&[u8], Self> {
-        let (bytes, channel_id) = ChannelId::decode(bytes)?;
-        let (bytes, inputs) = Inputs::decode(bytes)?;
-        let (bytes, metadata) = Metadata::decode(bytes)?;
-        Ok((
-            bytes,
-            Self {
-                channel_id,
-                inputs,
-                metadata,
-            },
-        ))
     }
 }
 
