@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use super::{ChannelId, Ed25519PublicKey, MsgId};
 use crate::{
     crypto::{Digest as _, Hasher},
-    events::Events,
+    events::TxEvent,
     mantle::{
         TxHash,
         channel::{ChannelState, Channels, Error, SlotTimeframe, SlotTimeout},
@@ -100,7 +100,7 @@ impl Operation<ChannelConfigValidationContext<'_>> for ChannelConfigOp {
     fn execute(
         &self,
         mut ctx: Self::ExecutionContext<'_>,
-    ) -> Result<(Self::ExecutionContext<'_>, Events), Self::Error> {
+    ) -> Result<(Self::ExecutionContext<'_>, Vec<TxEvent>), Self::Error> {
         // if the channel doesn't exist, create it otherwise just update the config
         if let Some(channel) = ctx.channels.channels.get_mut(&self.channel) {
             channel.accredited_keys = self.keys.clone().into();
@@ -130,6 +130,6 @@ impl Operation<ChannelConfigValidationContext<'_>> for ChannelConfigOp {
                 },
             );
         }
-        Ok((ctx, Events::new()))
+        Ok((ctx, Vec::new()))
     }
 }

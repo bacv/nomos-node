@@ -4,7 +4,7 @@ use lb_cryptarchia_engine::Slot;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    events::Events,
+    events::TxEvent,
     mantle::{
         Value,
         ledger::{self, Operation as _},
@@ -137,7 +137,7 @@ impl Default for Channels {
 }
 
 impl Channels {
-    pub fn from_genesis(op: &InscriptionOp) -> Result<(Self, Events), Error> {
+    pub fn from_genesis(op: &InscriptionOp) -> Result<(Self, Vec<TxEvent>), Error> {
         let (ctx, events) = op.execute(InscriptionExecutionContext {
             channels: Self::default(),
             block_slot: Slot::default(),
@@ -210,7 +210,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        events::{Event, EventPayload},
+        events::TxEventPayload,
         mantle::{
             Note, Utxo,
             ledger::{Outputs, Utxos},
@@ -380,11 +380,11 @@ mod tests {
         );
 
         assert_eq!(events.len(), 1);
-        let Some(Event::Tx {
+        let Some(TxEvent {
             tx_hash,
             op_id,
             payload:
-                EventPayload::Deposit {
+                TxEventPayload::Deposit {
                     channel_id: event_channel_id,
                     amount,
                     metadata,
@@ -392,8 +392,8 @@ mod tests {
         }) = events.iter().find(|event| {
             matches!(
                 event,
-                Event::Tx {
-                    payload: EventPayload::Deposit { .. },
+                TxEvent {
+                    payload: TxEventPayload::Deposit { .. },
                     ..
                 }
             )
@@ -438,6 +438,8 @@ mod tests {
             updated.channels.channel_state(&channel_id).unwrap().balance,
             4
         );
+        // `SdpNoteUnlocked` event is not emitted immediately because the note will
+        // be unlocked after `SNAPSHOT_FINALIZATION_DELAY` epochs.
         assert!(events.is_empty());
     }
 
