@@ -443,11 +443,39 @@ impl NomDecode for ChainId {
     }
 }
 
+/// Time at which the chain should start. u32 suffices: we only need the
+/// positive half of the i64 Unix timestamp.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, NomCodec)]
+pub struct GenesisTime(u32);
+
+impl GenesisTime {
+    #[must_use]
+    pub const fn new(seconds_since_epoch: u32) -> Self {
+        Self(seconds_since_epoch)
+    }
+}
+
+impl From<GenesisTime> for OffsetDateTime {
+    fn from(value: GenesisTime) -> Self {
+        Self::from_unix_timestamp(i64::from(value.0))
+            .expect("u32 unix timestamp is always a valid OffsetDateTime")
+    }
+}
+
+impl TryFrom<OffsetDateTime> for GenesisTime {
+    type Error = String;
+    fn try_from(dt: OffsetDateTime) -> Result<Self, Self::Error> {
+        u32::try_from(dt.unix_timestamp())
+            .map(Self)
+            .map_err(|_| format!("datetime {dt:?} does not fit in u32"))
+    }
+}
+
 /// Cryptarchia parameters encoded as an inscription in the genesis block.
 #[derive(Debug, Clone, PartialEq, Eq, NomCodec)]
 pub struct CryptarchiaParameter {
     pub chain_id: ChainId,
-    pub genesis_time: OffsetDateTime,
+    pub genesis_time: GenesisTime,
     pub epoch_nonce: Fr,
 }
 
@@ -484,7 +512,7 @@ mod tests {
     fn cryptarchia_param() -> CryptarchiaParameter {
         CryptarchiaParameter {
             chain_id: "test".to_owned().try_into().unwrap(),
-            genesis_time: OffsetDateTime::from_unix_timestamp(1000).unwrap(),
+            genesis_time: GenesisTime::new(1000),
             epoch_nonce: Fr::ZERO,
         }
     }
@@ -761,6 +789,24 @@ mod tests {
         let encoded = param.encode();
         let (_, decoded) = CryptarchiaParameter::decode(&encoded).unwrap();
         assert_eq!(param, decoded);
+    }
+
+    #[test]
+    fn test_genesis_time_boundaries() {
+        // The u32::MAX unix timestamp is the largest value `GenesisTime` accepts.
+        let max = OffsetDateTime::from_unix_timestamp(i64::from(u32::MAX)).unwrap();
+        assert_eq!(
+            GenesisTime::try_from(max).unwrap(),
+            GenesisTime::new(u32::MAX)
+        );
+
+        // One second past u32::MAX must be rejected.
+        let overflow = OffsetDateTime::from_unix_timestamp(i64::from(u32::MAX) + 1).unwrap();
+        assert!(GenesisTime::try_from(overflow).is_err());
+
+        // Pre-epoch (negative) must be rejected.
+        let pre_epoch = OffsetDateTime::from_unix_timestamp(-1).unwrap();
+        assert!(GenesisTime::try_from(pre_epoch).is_err());
     }
 
     #[test]
