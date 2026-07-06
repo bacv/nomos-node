@@ -1,5 +1,4 @@
 pub mod channel;
-pub(crate) mod codec;
 pub mod gas;
 pub mod ledger;
 pub mod mock;
