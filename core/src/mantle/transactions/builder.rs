@@ -2,6 +2,7 @@ use std::{cmp::Ordering, collections::HashMap};
 
 use lb_key_management_system_keys::keys::ZkPublicKey;
 use lb_utils::bounded::BoundedError;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
@@ -10,7 +11,7 @@ use crate::{
         gas::{GasCost, GasOverflow},
         ledger::{BoundedUtxos, Inputs, Outputs},
         ops::{channel::withdraw::ChannelWithdrawOp, transfer::TransferOp},
-        transactions::{GasPrices, MantleTx, MantleTxContext},
+        transactions::{MantleTx, MantleTxContext},
     },
     proofs::channel_multi_sig_proof::ChannelMultiSigProof,
 };
@@ -25,6 +26,8 @@ pub enum TxBuilderError {
     InvalidOutputsBounds { source: BoundedError },
     #[error("Gas computation overflow: {0}")]
     GasOverflow(#[from] GasOverflow),
+    #[error("Funded transaction has negative net balance: {net_balance}")]
+    NegativeNetBalance { net_balance: i128 },
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -44,32 +47,39 @@ impl From<(BoundedError, BoundedTag)> for TxBuilderError {
     }
 }
 
-#[derive(Debug, Clone)]
+/// Builds a [`MantleTx`] incrementally.
+///
+/// The builder is intentionally free of any [`MantleTxContext`]: gas prices are
+/// tip-dependent, so the context is supplied as a parameter to the fee-aware
+/// methods ([`Self::gas_cost`], [`Self::funding_delta`],
+/// [`Self::return_change`]) at the moment they run. This keeps the builder
+/// serializable, so a partially built tx can be handed to a wallet (e.g. over
+/// HTTP) to be funded against a freshly fetched context.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MantleTxBuilder {
     mantle_tx: MantleTx,
     ledger_inputs: BoundedUtxos,
     pending_transfer: TransferOp,
     // Maps a Proof to its Op by the Op Index
     channel_multi_sig_proofs: HashMap<usize, ChannelMultiSigProof>,
-    context: MantleTxContext,
+}
+
+impl Default for MantleTxBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 // TODO: refactor to support more than 32 inputs (more than a single transfer)
 impl MantleTxBuilder {
     #[must_use]
-    pub fn new(context: MantleTxContext) -> Self {
+    pub fn new() -> Self {
         Self {
             mantle_tx: MantleTx([].into()),
             ledger_inputs: BoundedUtxos::default(),
             pending_transfer: TransferOp::new(Inputs::empty(), Outputs::empty()),
             channel_multi_sig_proofs: HashMap::new(),
-            context,
         }
-    }
-
-    #[must_use]
-    pub fn get_gas_prices(&self) -> GasPrices {
-        self.context.gas_context.get_gas_prices()
     }
 
     pub fn push_op(self, op: Op) -> Result<Self, TxBuilderError> {
@@ -140,11 +150,12 @@ impl MantleTxBuilder {
 
     pub fn return_change<G: GasConstants>(
         self,
+        context: &MantleTxContext,
         change_pk: ZkPublicKey,
     ) -> Result<Option<Self>, TxBuilderError> {
         // Calculate the funding delta with a dummy change note to account for
         // the gas cost increase from adding the output
-        let delta_with_change = self.with_dummy_change_note()?.funding_delta::<G>()?;
+        let delta_with_change = self.with_dummy_change_note()?.funding_delta::<G>(context)?;
 
         match delta_with_change.cmp(&0) {
             Ordering::Less | Ordering::Equal => {
@@ -168,7 +179,7 @@ impl MantleTxBuilder {
                 })?;
 
                 // Now the net balance should exactly equal the gas cost.
-                assert_eq!(tx_with_change.funding_delta::<G>()?, 0);
+                assert_eq!(tx_with_change.funding_delta::<G>(context)?, 0);
 
                 Ok(Some(tx_with_change))
             }
@@ -200,13 +211,33 @@ impl MantleTxBuilder {
         in_sum - out_sum
     }
 
-    pub fn gas_cost<G: GasConstants>(&self) -> Result<GasCost, TxBuilderError> {
-        let build = self.clone().build()?;
-        Ok(build.total_gas_cost::<G>(&self.context.gas_context)?)
+    /// The fee this transaction actually pays: its net balance (inputs minus
+    /// outputs). This can exceed the raw gas cost once priority tips are
+    /// introduced. Only meaningful once the builder is funded/balanced.
+    ///
+    /// Only accounts for builder-managed value (ledger inputs and the pending
+    /// transfer). `Transfer` ops pushed directly carry note ids whose values
+    /// are unknown to the builder and are not priced.
+    pub fn tx_fee(&self) -> Result<GasCost, TxBuilderError> {
+        let net_balance = self.net_balance();
+        u64::try_from(net_balance)
+            .map(GasCost::new)
+            .map_err(|_| TxBuilderError::NegativeNetBalance { net_balance })
     }
 
-    pub fn funding_delta<G: GasConstants>(&self) -> Result<i128, TxBuilderError> {
-        Ok(self.net_balance() - i128::from(self.gas_cost::<G>()?.into_inner()))
+    pub fn gas_cost<G: GasConstants>(
+        &self,
+        context: &MantleTxContext,
+    ) -> Result<GasCost, TxBuilderError> {
+        let build = self.clone().build()?;
+        Ok(build.total_gas_cost::<G>(&context.gas_context)?)
+    }
+
+    pub fn funding_delta<G: GasConstants>(
+        &self,
+        context: &MantleTxContext,
+    ) -> Result<i128, TxBuilderError> {
+        Ok(self.net_balance() - i128::from(self.gas_cost::<G>(context)?.into_inner()))
     }
 
     /// Returns all note IDs already consumed or locked by this transaction,
@@ -273,7 +304,7 @@ mod tests {
                 leader_claim::LeaderClaimOp,
                 sdp::{SDPDeclareOp, SDPWithdrawOp},
             },
-            transactions::MantleTxGasContext,
+            transactions::{GasPrices, MantleTxGasContext},
         },
         sdp::{DeclarationId, Locator, ProviderId, ServiceType},
     };
@@ -293,13 +324,18 @@ mod tests {
             gas_context: MantleTxGasContext::default(),
             leader_reward_amount: 30,
         };
-        let builder = MantleTxBuilder::new(context)
+        let builder = MantleTxBuilder::new()
             .push_op(Op::ChannelInscribe(op))
             .unwrap();
 
         // Check that the tx is already balanced because of zero gas price
         assert_eq!(builder.net_balance(), 0);
-        assert_eq!(builder.funding_delta::<MainnetGasConstants>().unwrap(), 0);
+        assert_eq!(
+            builder
+                .funding_delta::<MainnetGasConstants>(&context)
+                .unwrap(),
+            0
+        );
     }
 
     #[test]
@@ -316,13 +352,18 @@ mod tests {
             gas_context: MantleTxGasContext::default(),
             leader_reward_amount: 30,
         };
-        let builder = MantleTxBuilder::new(context)
+        let builder = MantleTxBuilder::new()
             .push_op(Op::ChannelDeposit(op))
             .unwrap();
 
         // Check that the tx is already balanced because of zero gas price
         assert_eq!(builder.net_balance(), 0);
-        assert_eq!(builder.funding_delta::<MainnetGasConstants>().unwrap(), 0);
+        assert_eq!(
+            builder
+                .funding_delta::<MainnetGasConstants>(&context)
+                .unwrap(),
+            0
+        );
     }
 
     #[test]
@@ -347,13 +388,18 @@ mod tests {
             ),
             leader_reward_amount: 30,
         };
-        let builder = MantleTxBuilder::new(context)
+        let builder = MantleTxBuilder::new()
             .push_op(Op::ChannelWithdraw(op))
             .unwrap();
 
         // Check that the tx is already balanced because of zero gas price
         assert_eq!(builder.net_balance(), 0);
-        assert_eq!(builder.funding_delta::<MainnetGasConstants>().unwrap(), 0);
+        assert_eq!(
+            builder
+                .funding_delta::<MainnetGasConstants>(&context)
+                .unwrap(),
+            0
+        );
     }
 
     #[test]
@@ -370,13 +416,16 @@ mod tests {
             gas_context: MantleTxGasContext::default(),
             leader_reward_amount: 30,
         };
-        let builder = MantleTxBuilder::new(context)
-            .push_op(Op::LeaderClaim(op))
-            .unwrap();
+        let builder = MantleTxBuilder::new().push_op(Op::LeaderClaim(op)).unwrap();
 
         // Check that the tx is already balanced because of zero gas price
         assert_eq!(builder.net_balance(), 0);
-        assert_eq!(builder.funding_delta::<MainnetGasConstants>().unwrap(), 0);
+        assert_eq!(
+            builder
+                .funding_delta::<MainnetGasConstants>(&context)
+                .unwrap(),
+            0
+        );
     }
 
     #[test]
@@ -386,7 +435,7 @@ mod tests {
             gas_context: MantleTxGasContext::default(),
             leader_reward_amount: 30,
         };
-        let builder = MantleTxBuilder::new(context)
+        let builder = MantleTxBuilder::new()
             .add_ledger_output(Note::new(40, ZkPublicKey::zero()))
             .unwrap()
             .add_ledger_input(Utxo::new([0u8; 32], 0, Note::new(50, ZkPublicKey::zero())));
@@ -395,20 +444,24 @@ mod tests {
         // Check that the balance is 10 (= 50 - 40)
         assert_eq!(builder.net_balance(), 10);
         assert_eq!(
-            builder.funding_delta::<MainnetGasConstants>().unwrap(),
+            builder
+                .funding_delta::<MainnetGasConstants>(&context)
+                .unwrap(),
             10 // zero gas price for now
         );
 
         // Add change note
         let builder = builder
-            .return_change::<MainnetGasConstants>(ZkPublicKey::zero())
+            .return_change::<MainnetGasConstants>(&context, ZkPublicKey::zero())
             .unwrap()
             .unwrap();
 
         // Check the tx is balanced
         assert_eq!(builder.net_balance(), 0);
         assert_eq!(
-            builder.funding_delta::<MainnetGasConstants>().unwrap(),
+            builder
+                .funding_delta::<MainnetGasConstants>(&context)
+                .unwrap(),
             0 // zero gas price for now
         );
     }
@@ -429,7 +482,7 @@ mod tests {
             value: 5,
             pk: ZkPublicKey::zero(),
         };
-        let builder = MantleTxBuilder::new(context)
+        let builder = MantleTxBuilder::new()
             .push_op(Op::ChannelInscribe(InscriptionOp {
                 channel_id,
                 inscription: b"hello".into(),
@@ -461,7 +514,9 @@ mod tests {
         // Check the balance before funding tx
         assert_eq!(builder.net_balance(), -40);
         assert_eq!(
-            builder.funding_delta::<MainnetGasConstants>().unwrap(),
+            builder
+                .funding_delta::<MainnetGasConstants>(&context)
+                .unwrap(),
             -40 // zero gas price for now
         );
 
@@ -473,24 +528,21 @@ mod tests {
         // Check the tx is balanced
         assert_eq!(builder.net_balance(), 0);
         assert_eq!(
-            builder.funding_delta::<MainnetGasConstants>().unwrap(),
+            builder
+                .funding_delta::<MainnetGasConstants>(&context)
+                .unwrap(),
             0 // zero gas price for now
         );
     }
 
     #[test]
     fn consumed_or_locked_notes() {
-        let context = MantleTxContext {
-            gas_context: MantleTxGasContext::default(),
-            leader_reward_amount: 30,
-        };
-
         let deposit_input = NoteId(Fr::from(1u64));
         let declare_locked = NoteId(Fr::from(2u64));
         let withdraw_locked = NoteId(Fr::from(3u64));
         let transfer_input = Utxo::new([0u8; 32], 0, Note::new(50, ZkPublicKey::zero()));
 
-        let builder = MantleTxBuilder::new(context)
+        let builder = MantleTxBuilder::new()
             .push_op(Op::ChannelDeposit(DepositOp {
                 channel_id: [0; 32].into(),
                 inputs: Inputs::new([deposit_input]),

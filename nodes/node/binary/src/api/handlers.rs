@@ -26,7 +26,7 @@ use lb_core::{
     events::Events,
     header::HeaderId,
     mantle::{
-        Op, SignedMantleTx, Transaction, TxHash, gas::MainnetGasConstants, ops::channel::ChannelId,
+        Op, SignedMantleTx, Transaction, TxHash, ops::channel::ChannelId,
         transactions::MantleTxBuilder,
     },
 };
@@ -976,8 +976,7 @@ where
             handle.relay::<WalletService>().await?,
         );
 
-        let tx_context = wallet.get_tx_context(None).await?;
-        let tx_builder = MantleTxBuilder::new(tx_context)
+        let tx_builder = MantleTxBuilder::new()
             .push_op(Op::ChannelDeposit(req.deposit))
             .map_err(|e| overwatch::DynError::from(e.to_string()))?;
         let lb_wallet_service::TipResponse {
@@ -992,7 +991,7 @@ where
             )
             .await?;
 
-        let tx_fee = funded_tx_builder.gas_cost::<MainnetGasConstants>()?;
+        let tx_fee = funded_tx_builder.tx_fee()?;
         if tx_fee > req.max_tx_fee {
             return Err(overwatch::DynError::from(format!(
                 "tx_fee({tx_fee}) exceeds max_tx_fee({})",

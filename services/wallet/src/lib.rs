@@ -506,11 +506,23 @@ where
                     }
                 };
 
+                // Fetch the tx context (gas prices) fresh at fund time. It is
+                // tip-dependent, so a builder handed to us earlier must be funded
+                // against the current context rather than a stale one.
+                let context = match Self::ledger_state_at(tip, cryptarchia).await {
+                    Ok(ledger) => ledger.tx_context(),
+                    Err(err) => {
+                        Self::send_err(resp_tx, err);
+                        return;
+                    }
+                };
+
                 let funded = match state.wallet().fund_tx::<MainnetGasConstants>(
                     tip,
                     &tx_builder,
                     change_pk,
                     funding_pks,
+                    &context,
                 ) {
                     Ok(funded) => funded,
                     Err(err) => {
@@ -1184,30 +1196,33 @@ where
         state: &ServiceState<'_>,
         kms: &KmsServiceApi<Kms, RuntimeServiceId>,
     ) -> Result<SignedMantleTx, WalletServiceError> {
-        let tx_builder =
-            MantleTxBuilder::new(ledger.tx_context()).push_op(Op::LeaderClaim(LeaderClaimOp {
-                rewards_root: request.rewards_root,
-                voucher_nullifier,
-                pk: request.funding_pk,
-            }))?;
+        let context = ledger.tx_context();
+        let tx_builder = MantleTxBuilder::new().push_op(Op::LeaderClaim(LeaderClaimOp {
+            rewards_root: request.rewards_root,
+            voucher_nullifier,
+            pk: request.funding_pk,
+        }))?;
 
         let funded_tx_builder = state.wallet().fund_tx::<MainnetGasConstants>(
             request.tip,
             &tx_builder,
             request.funding_pk,
             [request.funding_pk],
+            &context,
         )?;
 
-        let tx_fee = funded_tx_builder.gas_cost::<MainnetGasConstants>()?;
+        let net_balance = funded_tx_builder.net_balance();
+        let gas_cost = funded_tx_builder.gas_cost::<MainnetGasConstants>(&context)?;
         debug!(
             target: LOG_TARGET,
-            net_balance = funded_tx_builder.net_balance(),
-            gas_cost = ?tx_fee,
+            net_balance,
+            gas_cost = ?gas_cost,
             reward_amount = request.reward_amount,
             n_inputs = funded_tx_builder.ledger_inputs().len(),
             "leader claim tx builder state after funding"
         );
 
+        let tx_fee = funded_tx_builder.tx_fee()?;
         if tx_fee > request.max_tx_fee {
             return Err(WalletServiceError::TxFeeExceedsMaxFee {
                 max_fee: request.max_tx_fee,

@@ -6,7 +6,7 @@ use lb_core::{
     header::HeaderId as CoreHeaderId,
     mantle::{
         MantleTx, Note, NoteId as CoreNoteId, Op, OpProof, SignedMantleTx, Transaction,
-        gas::{GasCost, MainnetGasConstants},
+        gas::GasCost,
         ledger::{Inputs, Outputs},
         ops::{
             channel::{
@@ -944,13 +944,7 @@ pub(crate) fn channel_deposit_with_notes_sync(
 
         // Mirrors the node's `channel_deposit` handler: build -> fund -> check
         // fee -> sign -> submit.
-        let tx_context = api.get_tx_context(Some(tip)).await.map_err(|error| {
-            OperationStatus::error(
-                OperationStatusCode::DynError,
-                format!("Failed to get tx context: {error}"),
-            )
-        })?;
-        let tx_builder = MantleTxBuilder::new(tx_context)
+        let tx_builder = MantleTxBuilder::new()
             .push_op(Op::ChannelDeposit(deposit))
             .map_err(|error| {
                 OperationStatus::error(
@@ -976,14 +970,12 @@ pub(crate) fn channel_deposit_with_notes_sync(
                 )
             })?;
 
-        let tx_fee = funded_tx_builder
-            .gas_cost::<MainnetGasConstants>()
-            .map_err(|error| {
-                OperationStatus::error(
-                    OperationStatusCode::DynError,
-                    format!("Failed to compute gas cost: {error}"),
-                )
-            })?;
+        let tx_fee = funded_tx_builder.tx_fee().map_err(|error| {
+            OperationStatus::error(
+                OperationStatusCode::DynError,
+                format!("Failed to compute tx fee: {error}"),
+            )
+        })?;
         if tx_fee > max_tx_fee {
             return Err(OperationStatus::error(
                 OperationStatusCode::DynError,

@@ -21,7 +21,7 @@ use lb_core::{
             leader_claim::{VoucherCm, VoucherNullifier},
             transfer::TransferOp,
         },
-        transactions::builder::MantleTxBuilder,
+        transactions::{MantleTxContext, builder::MantleTxBuilder},
     },
     proofs::leader_proof::LeaderProof as _,
 };
@@ -187,6 +187,7 @@ impl WalletState {
         tx_builder: &MantleTxBuilder,
         change_pk: ZkPublicKey,
         pks: impl IntoIterator<Item = impl Borrow<ZkPublicKey>>,
+        context: &MantleTxContext,
     ) -> Result<MantleTxBuilder, WalletError> {
         // Get all UTXOs owned by the provided PKs, excluding the following notes:
         // - Notes that are being consumed/locked by the tx
@@ -208,10 +209,12 @@ impl WalletState {
         // wallet's UTXOs, for example when it pays no fee or the caller already
         // supplied inputs. In that case we must not pull in an extra input (and
         // the change note it would require).
-        match tx_builder.funding_delta::<G>()?.cmp(&0) {
+        match tx_builder.funding_delta::<G>(context)?.cmp(&0) {
             Ordering::Equal => return Ok(tx_builder.clone()),
             Ordering::Greater => {
-                if let Some(tx_with_change) = tx_builder.clone().return_change::<G>(change_pk)? {
+                if let Some(tx_with_change) =
+                    tx_builder.clone().return_change::<G>(context, change_pk)?
+                {
                     return Ok(tx_with_change);
                 }
                 // The change note costs more than the surplus covers, so fall
@@ -225,7 +228,7 @@ impl WalletState {
                 .clone()
                 .extend_ledger_inputs(utxos[..=i].iter().copied())?;
 
-            let funding_delta = funded_tx_builder.funding_delta::<G>()?;
+            let funding_delta = funded_tx_builder.funding_delta::<G>(context)?;
 
             match funding_delta.cmp(&0) {
                 Ordering::Less => {
@@ -239,7 +242,9 @@ impl WalletState {
                     // We have enough balance, but we need to introduce a change note.
                     // The change note will slightly increase the storage cost of the tx so there is
                     // a chance that we will not be able to fund the tx with the change note.
-                    if let Some(tx_with_change) = funded_tx_builder.return_change::<G>(change_pk)? {
+                    if let Some(tx_with_change) =
+                        funded_tx_builder.return_change::<G>(context, change_pk)?
+                    {
                         // We were able to fund the tx with change note added.
                         return Ok(tx_with_change);
                     }
@@ -686,9 +691,10 @@ where
         tx_builder: &MantleTxBuilder,
         change_pk: ZkPublicKey,
         funding_pks: impl IntoIterator<Item = impl Borrow<ZkPublicKey>>,
+        context: &MantleTxContext,
     ) -> Result<MantleTxBuilder, WalletError> {
         self.wallet_state_at(tip)?
-            .fund_tx::<G>(tx_builder, change_pk, funding_pks)
+            .fund_tx::<G>(tx_builder, change_pk, funding_pks, context)
     }
 
     pub fn wallet_state_at(&self, tip: HeaderId) -> Result<WalletState, WalletError> {
@@ -756,7 +762,7 @@ mod tests {
             gas::MainnetGasConstants as Gas,
             ledger::{Inputs, Outputs},
             ops::channel::{ChannelId, MsgId, inscribe::InscriptionOp},
-            transactions::{GasPrices, MantleTxContext, MantleTxGasContext},
+            transactions::{GasPrices, MantleTxGasContext},
         },
         sdp::{MinStake, ServiceParameters, ServiceType},
     };
@@ -1207,25 +1213,29 @@ mod tests {
         // Lock `utxo1` deliberately to ensure that `fund_tx` excludes locked notes
         wallet_state.locked_notes = wallet_state.locked_notes.insert(utxo1.id());
 
-        let tx_builder = MantleTxBuilder::new(MantleTxContext {
+        let context = MantleTxContext {
             gas_context: MantleTxGasContext::from_channels(
                 &Channels::default(),
                 GasPrices::new(1, 1),
             ),
             leader_reward_amount: 0,
-        });
+        };
+        let tx_builder = MantleTxBuilder::new();
 
         // Fund the transaction
         let funded_tx_builder = wallet_state
-            .fund_tx::<Gas>(&tx_builder, alice, [alice])
+            .fund_tx::<Gas>(&tx_builder, alice, [alice], &context)
             .unwrap();
 
         assert_eq!(
             794,
-            funded_tx_builder.gas_cost::<Gas>().unwrap().into_inner()
+            funded_tx_builder
+                .gas_cost::<Gas>(&context)
+                .unwrap()
+                .into_inner()
         );
         assert_eq!(794, funded_tx_builder.net_balance());
-        assert_eq!(0, funded_tx_builder.funding_delta::<Gas>().unwrap());
+        assert_eq!(0, funded_tx_builder.funding_delta::<Gas>(&context).unwrap());
 
         let funded_tx = funded_tx_builder.build().unwrap();
 
@@ -1256,13 +1266,14 @@ mod tests {
 
         // ...but with zero gas prices a transfer-less transaction owes no fee,
         // so it needs no funding at all.
-        let mut tx_builder = MantleTxBuilder::new(MantleTxContext {
+        let context = MantleTxContext {
             gas_context: MantleTxGasContext::from_channels(
                 &Channels::default(),
                 GasPrices::new(0, 0),
             ),
             leader_reward_amount: 0,
-        });
+        };
+        let mut tx_builder = MantleTxBuilder::new();
 
         let signing_key = Ed25519Key::from_bytes(&[1; 32]);
         tx_builder = tx_builder
@@ -1274,10 +1285,10 @@ mod tests {
             }))
             .unwrap();
 
-        assert_eq!(0, tx_builder.funding_delta::<Gas>().unwrap());
+        assert_eq!(0, tx_builder.funding_delta::<Gas>(&context).unwrap());
 
         let funded_tx_builder = wallet_state
-            .fund_tx::<Gas>(&tx_builder, alice, [alice])
+            .fund_tx::<Gas>(&tx_builder, alice, [alice], &context)
             .unwrap();
 
         // No input was pulled in (an added input would push the net balance to
@@ -1308,7 +1319,7 @@ mod tests {
             &ledger_config(),
         );
 
-        let builder_context = MantleTxContext {
+        let context = MantleTxContext {
             gas_context: MantleTxGasContext::from_channels(
                 ledger_state.mantle_ledger().channels(),
                 GasPrices::new(1, 1),
@@ -1318,7 +1329,7 @@ mod tests {
 
         let wallet_state =
             WalletState::from_ledger(&HashMap::from_iter([(alice, 1)]), &ledger_state);
-        let mut tx_builder = MantleTxBuilder::new(builder_context);
+        let mut tx_builder = MantleTxBuilder::new();
 
         // Add a costly inscription
         let signing_key = Ed25519Key::from_bytes(&[1; 32]);
@@ -1332,7 +1343,7 @@ mod tests {
         tx_builder = tx_builder.push_op(inscription).unwrap();
 
         // Fund the transaction
-        let fund_attempt = wallet_state.fund_tx::<Gas>(&tx_builder, alice, [alice]);
+        let fund_attempt = wallet_state.fund_tx::<Gas>(&tx_builder, alice, [alice], &context);
 
         assert_eq!(
             fund_attempt.unwrap_err(),
@@ -1350,16 +1361,17 @@ mod tests {
 
         // Use non-zero gas prices so the transaction actually owes a fee and
         // therefore needs funding.
-        let tx_builder = MantleTxBuilder::new(MantleTxContext {
+        let context = MantleTxContext {
             gas_context: MantleTxGasContext::from_channels(
                 &Channels::default(),
                 GasPrices::new(1, 1),
             ),
             leader_reward_amount: 0,
-        });
+        };
+        let tx_builder = MantleTxBuilder::new();
 
         // Fund the transaction
-        let fund_attempt = wallet_state.fund_tx::<Gas>(&tx_builder, alice, [alice]);
+        let fund_attempt = wallet_state.fund_tx::<Gas>(&tx_builder, alice, [alice], &context);
 
         assert_eq!(
             fund_attempt.unwrap_err(),
@@ -1380,16 +1392,17 @@ mod tests {
 
         // Use non-zero gas prices so the transaction actually owes a fee and
         // therefore needs funding.
-        let tx_builder = MantleTxBuilder::new(MantleTxContext {
+        let context = MantleTxContext {
             gas_context: MantleTxGasContext::from_channels(
                 &Channels::default(),
                 GasPrices::new(1, 1),
             ),
             leader_reward_amount: 0,
-        });
+        };
+        let tx_builder = MantleTxBuilder::new();
 
         // Fund the transaction
-        let fund_attempt = wallet_state.fund_tx::<Gas>(&tx_builder, alice, [alice]);
+        let fund_attempt = wallet_state.fund_tx::<Gas>(&tx_builder, alice, [alice], &context);
 
         assert_eq!(
             fund_attempt.unwrap_err(),
@@ -1411,16 +1424,17 @@ mod tests {
 
         // Use non-zero gas prices so the transaction actually owes a fee and
         // therefore needs funding.
-        let tx_builder = MantleTxBuilder::new(MantleTxContext {
+        let context = MantleTxContext {
             gas_context: MantleTxGasContext::from_channels(
                 &Channels::default(),
                 GasPrices::new(1, 1),
             ),
             leader_reward_amount: 0,
-        });
+        };
+        let tx_builder = MantleTxBuilder::new();
 
         // Attempt to fund the transaction with Alice's notes.
-        let fund_attempt = wallet_state.fund_tx::<Gas>(&tx_builder, alice, [alice]);
+        let fund_attempt = wallet_state.fund_tx::<Gas>(&tx_builder, alice, [alice], &context);
 
         assert_eq!(
             fund_attempt.unwrap_err(),
@@ -1429,7 +1443,7 @@ mod tests {
 
         // Fund the transaction with Bob's notes.
         wallet_state
-            .fund_tx::<Gas>(&tx_builder, bob, [bob])
+            .fund_tx::<Gas>(&tx_builder, bob, [bob], &context)
             .unwrap(); // succesfully funded;
     }
 
@@ -1437,13 +1451,14 @@ mod tests {
     fn test_fund_tx_unfundable_region() {
         let alice = pk(1);
 
-        let tx_builder = MantleTxBuilder::new(MantleTxContext {
+        let context = MantleTxContext {
             gas_context: MantleTxGasContext::from_channels(
                 &Channels::default(),
                 GasPrices::new(1, 1),
             ),
             leader_reward_amount: 0,
-        });
+        };
+        let tx_builder = MantleTxBuilder::new();
 
         // Determine gas cost without change note
         assert_eq!(
@@ -1452,7 +1467,7 @@ mod tests {
                 .clone()
                 .add_ledger_input(Utxo::new(tx_hash(0), 0, Note::new(0, pk(0))))
                 .unwrap()
-                .gas_cost::<Gas>()
+                .gas_cost::<Gas>(&context)
                 .unwrap()
                 .into_inner()
         );
@@ -1468,7 +1483,7 @@ mod tests {
         );
 
         let funded_tx_wo_change = wallet_state
-            .fund_tx::<Gas>(&tx_builder, alice, [alice])
+            .fund_tx::<Gas>(&tx_builder, alice, [alice], &context)
             .unwrap()
             .build()
             .unwrap(); // successfully funded the tx
@@ -1491,7 +1506,7 @@ mod tests {
                 .unwrap()
                 .with_dummy_change_note()
                 .unwrap()
-                .gas_cost::<Gas>()
+                .gas_cost::<Gas>(&context)
                 .unwrap()
                 .into_inner()
         );
@@ -1508,7 +1523,7 @@ mod tests {
                 ),
             );
 
-            let fund_attempt = wallet_state.fund_tx::<Gas>(&tx_builder, alice, [alice]);
+            let fund_attempt = wallet_state.fund_tx::<Gas>(&tx_builder, alice, [alice], &context);
 
             assert_eq!(
                 fund_attempt.unwrap_err(),
@@ -1526,7 +1541,7 @@ mod tests {
         );
 
         let funded_tx_wo_change = wallet_state
-            .fund_tx::<Gas>(&tx_builder, alice, [alice])
+            .fund_tx::<Gas>(&tx_builder, alice, [alice], &context)
             .unwrap()
             .build()
             .unwrap(); // successfully funded the tx
