@@ -176,6 +176,12 @@ impl MantleTxGasContext {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MantleTx(pub Ops);
 
+impl StorageSize for MantleTx {
+    fn storage_size(&self) -> usize {
+        encode_mantle_tx(self).len()
+    }
+}
+
 impl From<MantleTxDeSerImpl> for MantleTx {
     fn from(MantleTxDeSerImpl { ops }: MantleTxDeSerImpl) -> Self {
         Self(ops)
