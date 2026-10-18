@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use lb_utils::{
-    bounded_duration::{MinimalBoundedDuration, SECOND},
+    bounded_duration::{MILLI, MinimalBoundedDuration, SECOND},
     math::PositiveF64,
 };
 use libp2p::Multiaddr;
@@ -26,7 +26,10 @@ impl From<Config> for lb_libp2p::NatSettings {
             Config::Traversal(traversal_config) => Self::Traversal(lb_libp2p::TraversalSettings {
                 autonat: lb_libp2p::AutonatClientSettings {
                     max_candidates: traversal_config.autonat.max_candidates,
-                    probe_interval_millisecs: traversal_config.autonat.probe_interval_millisecs,
+                    probe_interval_millisecs: traversal_config
+                        .autonat
+                        .probe_interval
+                        .map(|interval| duration_to_u64(interval.as_millis())),
                     retest_successful_external_addresses_interval: traversal_config
                         .autonat
                         .retest_successful_external_addresses_interval,
@@ -47,6 +50,11 @@ impl From<Config> for lb_libp2p::NatSettings {
     }
 }
 
+/// Saturates a `u128` duration amount into the `u64` `lb_libp2p` expects.
+fn duration_to_u64(amount: u128) -> u64 {
+    u64::try_from(amount).unwrap_or(u64::MAX)
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self::Traversal(TraversalConfig::default())
@@ -61,6 +69,7 @@ pub struct TraversalConfig {
     pub gateway_monitor: GatewayConfig,
 }
 
+#[serde_as]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AutonatClientConfig {
@@ -68,12 +77,16 @@ pub struct AutonatClientConfig {
     pub max_candidates: Option<usize>,
 
     /// The interval at which we will attempt to confirm candidates as external
-    /// addresses, only used for new candidates.
-    pub probe_interval_millisecs: Option<u64>,
+    /// addresses, only used for new candidates, e.g. `5s`. A bare integer is
+    /// read as milliseconds.
+    #[serde(alias = "probe_interval_millisecs")]
+    #[serde_as(as = "Option<MinimalBoundedDuration<1, MILLI>>")]
+    pub probe_interval: Option<Duration>,
 
     /// The interval at which we will retest successful external addresses.
     /// This is used to ensure that the external address is still valid and
     /// reachable.
+    #[serde_as(as = "MinimalBoundedDuration<0, SECOND>")]
     pub retest_successful_external_addresses_interval: Duration,
 }
 
@@ -81,7 +94,7 @@ impl Default for AutonatClientConfig {
     fn default() -> Self {
         Self {
             max_candidates: None,
-            probe_interval_millisecs: None,
+            probe_interval: None,
             retest_successful_external_addresses_interval: Duration::from_mins(1),
         }
     }
@@ -93,9 +106,11 @@ impl Default for AutonatClientConfig {
 pub struct MappingConfig {
     #[serde_as(as = "MinimalBoundedDuration<1, SECOND>")]
     pub timeout: Duration,
+    #[serde_as(as = "MinimalBoundedDuration<1, SECOND>")]
     pub lease_duration: Duration,
     pub max_retries: u32,
     pub renewal_delay_fraction: PositiveF64,
+    #[serde_as(as = "MinimalBoundedDuration<0, SECOND>")]
     pub retry_interval: Duration,
 }
 
@@ -111,10 +126,12 @@ impl Default for MappingConfig {
     }
 }
 
+#[serde_as]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(default)]
 pub struct GatewayConfig {
     /// How often to check for gateway address changes
+    #[serde_as(as = "MinimalBoundedDuration<1, SECOND>")]
     pub check_interval: Duration,
 }
 
