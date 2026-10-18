@@ -8,9 +8,7 @@ use serde_with::serde_as;
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct Config {
-    /// The timeout for a single query, e.g. `10s`. A bare integer is read as
-    /// seconds.
-    #[serde(alias = "query_timeout_secs")]
+    /// The timeout for a single query
     #[serde_as(as = "Option<MinimalBoundedDuration<1, SECOND>>")]
     pub query_timeout: Option<Duration>,
 
@@ -32,11 +30,9 @@ pub struct Config {
     /// The caching strategy
     pub caching: Option<CachingSettings>,
 
-    /// The interval for periodic bootstrap, e.g. `5m`. A bare integer is read
-    /// as seconds.
+    /// The interval for periodic bootstrap
     /// If enabled the periodic bootstrap will run at this interval in addition
     /// to the automatic bootstrap that is triggered when a new peer is added
-    #[serde(alias = "periodic_bootstrap_interval_secs")]
     #[serde_as(as = "Option<MinimalBoundedDuration<1, SECOND>>")]
     pub periodic_bootstrap_interval: Option<Duration>,
 }

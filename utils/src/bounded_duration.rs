@@ -1,10 +1,6 @@
-use std::{fmt, fmt::Display, marker::PhantomData};
+use std::{fmt::Display, marker::PhantomData};
 
-use serde::{
-    Deserialize, Deserializer, Serialize, Serializer,
-    de::{self, Error as _, MapAccess, SeqAccess, Visitor},
-    ser::Error as _,
-};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _, ser::Error as _};
 use serde_with::{DeserializeAs, SerializeAs};
 use time::Duration;
 
@@ -16,16 +12,6 @@ use time::Duration;
 ///
 /// It embeds the checks at type level. It implements the pertinent types from
 /// the `serde_with` crate so it can be used within `serde_as` macros.
-///
-/// In human-readable formats (YAML, JSON, ...) durations are serialized as
-/// [`humantime`] strings (`250ms`, `5s`, `1h 30m`). Deserialization accepts:
-/// - a [`humantime`] string: `"250ms"`, `"5s"`, `"24h"`;
-/// - a bare integer, read in the unit of `TAG` (e.g. `5000` is `5s` for
-///   [`MILLI`] and `5000s` for [`SECOND`]);
-/// - the legacy `"<secs>.<nanos>"` string (`"5.000000000"`);
-/// - the legacy `{ secs, nanos }` map or `[secs, nanos]` sequence.
-///
-/// Non human-readable formats keep the [`time::Duration`] encoding.
 ///
 /// # Examples
 /// ```rust
@@ -84,108 +70,6 @@ fn fill_duration_measure<T: TimeTag>() -> Result<String, impl Display> {
     }
 }
 
-/// Builds a [`Duration`] of `amount` units of the `TAG` measure.
-fn duration_in_tag_unit<T: TimeTag>(amount: i64) -> Result<Duration, String> {
-    let unit = match T::inner() {
-        'd' => Duration::DAY,
-        'h' => Duration::HOUR,
-        'm' => Duration::MINUTE,
-        's' => Duration::SECOND,
-        'l' => Duration::MILLISECOND,
-        'n' => Duration::NANOSECOND,
-        other => return Err(format!("'{other}' measure not supported")),
-    };
-    unit.checked_mul(
-        amount
-            .try_into()
-            .map_err(|_| format!("Duration of {amount} units overflowed"))?,
-    )
-    .ok_or_else(|| format!("Duration of {amount} units overflowed"))
-}
-
-/// Parses a legacy `"<secs>.<nanos>"` duration string, as produced by the
-/// human-readable `time::Duration` serde implementation.
-fn parse_legacy_seconds(value: &str) -> Option<Duration> {
-    let (secs, nanos) = value.split_once('.')?;
-    let negative = secs.starts_with('-');
-    let secs: i64 = secs.parse().ok()?;
-    if nanos.is_empty() || nanos.len() > 9 || !nanos.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    let nanos: i32 = format!("{nanos:0<9}").parse().ok()?;
-    Some(Duration::new(secs, if negative { -nanos } else { nanos }))
-}
-
-fn std_to_time_duration(value: core::time::Duration) -> Result<Duration, String> {
-    Ok(Duration::new(
-        value.as_secs().try_into().map_err(|e| format!("{e}"))?,
-        value
-            .subsec_nanos()
-            .try_into()
-            .map_err(|e| format!("{e}"))?,
-    ))
-}
-
-struct HumanReadableVisitor<TAG>(PhantomData<*const TAG>);
-
-impl<'de, TAG: TimeTag> Visitor<'de> for HumanReadableVisitor<TAG> {
-    type Value = Duration;
-
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str(
-            "a duration such as \"250ms\", \"5s\" or \"24h\", or an integer in the field's unit",
-        )
-    }
-
-    fn visit_u64<E: de::Error>(self, value: u64) -> Result<Duration, E> {
-        let value = i64::try_from(value).map_err(E::custom)?;
-        duration_in_tag_unit::<TAG>(value).map_err(E::custom)
-    }
-
-    fn visit_i64<E: de::Error>(self, value: i64) -> Result<Duration, E> {
-        duration_in_tag_unit::<TAG>(value).map_err(E::custom)
-    }
-
-    fn visit_str<E: de::Error>(self, value: &str) -> Result<Duration, E> {
-        let trimmed = value.trim();
-        if let Some(duration) = parse_legacy_seconds(trimmed) {
-            return Ok(duration);
-        }
-        if let Ok(amount) = trimmed.parse::<i64>() {
-            return duration_in_tag_unit::<TAG>(amount).map_err(E::custom);
-        }
-        let duration = humantime::parse_duration(trimmed)
-            .map_err(|e| E::custom(format!("invalid duration {value:?}: {e}")))?;
-        std_to_time_duration(duration).map_err(E::custom)
-    }
-
-    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Duration, A::Error> {
-        let secs: i64 = seq
-            .next_element()?
-            .ok_or_else(|| A::Error::invalid_length(0, &self))?;
-        let nanos: i32 = seq
-            .next_element()?
-            .ok_or_else(|| A::Error::invalid_length(1, &self))?;
-        Ok(Duration::new(secs, nanos))
-    }
-
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Duration, A::Error> {
-        let mut secs: Option<i64> = None;
-        let mut nanos: Option<i32> = None;
-        while let Some(key) = map.next_key::<String>()? {
-            match key.as_str() {
-                "secs" | "seconds" => secs = Some(map.next_value()?),
-                "nanos" | "nanoseconds" => nanos = Some(map.next_value()?),
-                other => return Err(A::Error::unknown_field(other, &["secs", "nanos"])),
-            }
-        }
-        Ok(Duration::new(
-            secs.ok_or_else(|| A::Error::missing_field("secs"))?,
-            nanos.unwrap_or_default(),
-        ))
-    }
-}
-
 impl<const MIN_DURATION: usize, TAG: TimeTag> Serialize
     for MinimalBoundedDuration<MIN_DURATION, TAG>
 {
@@ -196,21 +80,8 @@ impl<const MIN_DURATION: usize, TAG: TimeTag> Serialize
         if !serializer.is_human_readable() {
             return self.duration.serialize(serializer);
         }
-        if self.duration.is_negative() {
-            return Err(S::Error::custom(
-                "Negative durations cannot be serialized in human-readable formats",
-            ));
-        }
-        let std_duration = core::time::Duration::new(
-            self.duration
-                .whole_seconds()
-                .try_into()
-                .map_err(S::Error::custom)?,
-            self.duration
-                .subsec_nanoseconds()
-                .try_into()
-                .map_err(S::Error::custom)?,
-        );
+        let std_duration: core::time::Duration =
+            self.duration.try_into().map_err(S::Error::custom)?;
         serializer.collect_str(&humantime::format_duration(std_duration))
     }
 }
@@ -284,7 +155,11 @@ impl<'de, const MIN_DURATION: usize, TAG: TimeTag> Deserialize<'de>
         D: Deserializer<'de>,
     {
         let value: Duration = if deserializer.is_human_readable() {
-            deserializer.deserialize_any(HumanReadableVisitor::<TAG>(PhantomData))?
+            let value = String::deserialize(deserializer)?;
+            humantime::parse_duration(&value)
+                .map_err(D::Error::custom)?
+                .try_into()
+                .map_err(D::Error::custom)?
         } else {
             Duration::deserialize(deserializer)?
         };
@@ -353,7 +228,7 @@ mod test {
 
     #[test]
     fn success_deserialize() {
-        let json_value = json!([1, 0]);
+        let json_value = json!("1s");
         let value = serde_json::to_value(json_value).unwrap();
         let _duration: MinimalBoundedDuration<1, SECOND> = serde_json::from_value(value).unwrap();
     }
@@ -361,7 +236,7 @@ mod test {
     #[test]
     #[should_panic(expected = "Minimal duration is 1d but got 1s")]
     fn fail_deserialize_with_type_bound() {
-        let value = serde_json::to_value(Duration::seconds(1)).unwrap();
+        let value = json!("1s");
 
         let _duration: MinimalBoundedDuration<1, DAY> = serde_json::from_value(value).unwrap();
     }

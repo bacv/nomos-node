@@ -29,7 +29,7 @@ impl From<Config> for lb_libp2p::NatSettings {
                     probe_interval_millisecs: traversal_config
                         .autonat
                         .probe_interval
-                        .map(|interval| duration_to_u64(interval.as_millis())),
+                        .map(|interval| u64::try_from(interval.as_millis()).unwrap_or(u64::MAX)),
                     retest_successful_external_addresses_interval: traversal_config
                         .autonat
                         .retest_successful_external_addresses_interval,
@@ -48,11 +48,6 @@ impl From<Config> for lb_libp2p::NatSettings {
             Config::Static { external_address } => Self::Static { external_address },
         }
     }
-}
-
-/// Saturates a `u128` duration amount into the `u64` `lb_libp2p` expects.
-fn duration_to_u64(amount: u128) -> u64 {
-    u64::try_from(amount).unwrap_or(u64::MAX)
 }
 
 impl Default for Config {
@@ -77,9 +72,7 @@ pub struct AutonatClientConfig {
     pub max_candidates: Option<usize>,
 
     /// The interval at which we will attempt to confirm candidates as external
-    /// addresses, only used for new candidates, e.g. `5s`. A bare integer is
-    /// read as milliseconds.
-    #[serde(alias = "probe_interval_millisecs")]
+    /// addresses, only used for new candidates.
     #[serde_as(as = "Option<MinimalBoundedDuration<1, MILLI>>")]
     pub probe_interval: Option<Duration>,
 

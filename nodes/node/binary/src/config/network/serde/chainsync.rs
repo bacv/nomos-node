@@ -10,7 +10,7 @@ use serde_with::serde_as;
 #[serde(default)]
 pub struct Config {
     /// The maximum duration to wait for a peer to respond
-    /// with a message, e.g. `5s`. A bare integer is read as milliseconds.
+    /// with a message.
     #[serde_as(as = "MinimalBoundedDuration<1, MILLI>")]
     pub peer_response_timeout: Duration,
     /// The maximum number of inbound requests that can be handled concurrently,

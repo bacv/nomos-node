@@ -11,10 +11,8 @@ pub struct Config {
     /// Agent version string to advertise
     pub agent_version: Option<String>,
 
-    /// Interval between pushes of identify info, e.g. `5m`. A bare integer is
-    /// read as seconds.
+    /// Interval between pushes of identify info
     /// Default from libp2p
-    #[serde(alias = "interval_secs")]
     #[serde_as(as = "Option<MinimalBoundedDuration<1, SECOND>>")]
     pub interval: Option<Duration>,
 

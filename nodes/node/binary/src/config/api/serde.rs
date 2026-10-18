@@ -21,8 +21,7 @@ pub struct AxumBackendSettings {
     pub listen_address: core::net::SocketAddr,
     /// Allowed origins for these server deployment requests.
     pub cors_origins: Vec<String>,
-    /// Timeout for API requests, e.g. `30s`. A bare integer is read as
-    /// seconds.
+    /// Timeout for API requests.
     #[serde_as(as = "MinimalBoundedDuration<1, SECOND>")]
     pub timeout: Duration,
     /// Maximum request body size in bytes.
