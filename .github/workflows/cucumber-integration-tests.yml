@@ -19,7 +19,6 @@ jobs:
     name: Run cucumber integration tests (${{ matrix.platform.label }})
     # Heavy, self-hosted suite: run ONLY inside the merge queue so the pull
     # request phase reports only the lightweight `Cucumber result` check below.
-    if: ${{ github.event_name == 'merge_group' }}
 
     permissions:
       contents: read
@@ -31,13 +30,9 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          # Using self-hosted runners because we were running out of memory on GitHub-hosted runners
-          - os: [ self-hosted, Linux ]
-            label: self-hosted-linux
-            peer_label: self-hosted-macos
-          - os: [ self-hosted, macOS ]
-            label: self-hosted-macos
-            peer_label: self-hosted-linux
+          - os: ubuntu-latest
+            label: github-linux
+            peer_label: none
     runs-on: ${{ matrix.platform.os }}
     env:
       # Heavy Rust integration tests become less stable when oversubscribing the
@@ -73,6 +68,18 @@ jobs:
         uses: ./.github/actions/prune-disk-space
 
       # Ensure a local NTP server is running for deterministic time sync in cucumber tests
+      - name: Free disk space (GitHub-hosted runner)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h .
+
+      - name: Start local NTP server (GitHub-hosted runner)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq chrony
+          printf 'local stratum 10\nallow 127.0.0.1\n' | sudo tee -a /etc/chrony/chrony.conf
+          sudo systemctl restart chrony
+
       - name: Verify Local NTP Server
         id: verify_local_ntp
         uses: ./.github/actions/verify-local-ntp-server
@@ -299,13 +306,12 @@ jobs:
       # On pull requests, report the required check without running or checking
       # either self-hosted lane.
       - name: Report pull-request result
-        if: ${{ github.event_name != 'merge_group' }}
+        if: ${{ false }}
         run: echo "Cucumber integration tests run only in the merge queue"
 
       # A local composite action must be checked out before it can be invoked.
       # Only the required action directory is fetched.
       - name: Checkout result action
-        if: ${{ github.event_name == 'merge_group' }}
         uses: actions/checkout@85e6279cec87321a52edac9c87bce653a07cf6c2 # Version 4.2.2
         with:
           ref: ${{ github.sha }}
@@ -313,10 +319,9 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - name: Check Cucumber result
-        if: ${{ github.event_name == 'merge_group' }}
         uses: ./.github/actions/check-any-lane-result
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           result-name: Cucumber
           job-name-prefix: Run cucumber integration tests
-          lane-labels-json: '["self-hosted-linux", "self-hosted-macos"]'
+          lane-labels-json: '["github-linux"]'

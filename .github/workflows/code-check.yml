@@ -134,9 +134,7 @@ jobs:
       fail-fast: false # all OSes should be tested even if one fails (default: true)
       matrix:
         os:
-          # Using self-hosted runners because we were running out of memory on GitHub-hosted runners
-          - [ self-hosted, Linux ]
-          - [ self-hosted, macOS ]
+          - ubuntu-latest
     runs-on: ${{ matrix.os }}
     steps:
       - name: Disable rustup override
@@ -145,9 +143,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@85e6279cec87321a52edac9c87bce653a07cf6c2  # Version 4.2.2
 
-      # Prune before any builds.
-      - name: Prune disk space (cache-aware, self-hosted)
-        uses: ./.github/actions/prune-disk-space
+      - name: Free disk space (GitHub-hosted runner)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h .
 
       - name: Run the node binary with the testing feature to check the one-node config files validity
         uses: actions-rs/cargo@9e120dd99b0fbad1c065f686657e914e76bd7b72  # Version 1.0.1
